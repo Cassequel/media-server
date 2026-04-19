@@ -1,0 +1,12 @@
+# ASP.NET Core
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Secrets — use appsettings.Development.json for real values locally
+appsettings.Development.json
+
+# Local planning docs
+PLAN.md
