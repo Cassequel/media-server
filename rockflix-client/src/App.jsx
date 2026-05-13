@@ -3,6 +3,10 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import HomePage from './pages/HomePage'
+import MovieDetailPage from './pages/MovieDetailPage'
+import TvShowPage from './pages/TvShowPage'
+import PlayerPage from './pages/PlayerPage'
+import FavoritesPage from './pages/FavoritesPage'
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -20,11 +24,11 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
-      {/* These pages will be built next */}
-      <Route path="/library" element={<PrivateRoute><div className="p-8 text-white">Library — coming soon</div></PrivateRoute>} />
-      <Route path="/movie/:id" element={<PrivateRoute><div className="p-8 text-white">Movie detail — coming soon</div></PrivateRoute>} />
-      <Route path="/watch/movie/:id" element={<PrivateRoute><div className="p-8 text-white">Player — coming soon</div></PrivateRoute>} />
-      <Route path="/watch/episode/:id" element={<PrivateRoute><div className="p-8 text-white">Episode player — coming soon</div></PrivateRoute>} />
+      <Route path="/movie/:id" element={<PrivateRoute><MovieDetailPage /></PrivateRoute>} />
+      <Route path="/tvshow/:id" element={<PrivateRoute><TvShowPage /></PrivateRoute>} />
+      <Route path="/watch/movie/:id" element={<PrivateRoute><PlayerPage /></PrivateRoute>} />
+      <Route path="/watch/episode/:id" element={<PrivateRoute><PlayerPage /></PrivateRoute>} />
+      <Route path="/favorites" element={<PrivateRoute><FavoritesPage /></PrivateRoute>} />
     </Routes>
   )
 }

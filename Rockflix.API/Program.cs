@@ -11,7 +11,8 @@ builder.Services.AddControllers();
 
 // PostgreSQL + EF Core
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"]!;
@@ -28,6 +29,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
         };
+        // Allow token via query string for video streaming (video tags can't set headers)
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["token"].ToString();
+                if (!string.IsNullOrEmpty(token))
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -36,12 +48,25 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<MediaScannerService>();
+builder.Services.AddScoped<MediaRequestService>();
+
+// Named HTTP clients for Radarr and Sonarr
+builder.Services.AddHttpClient("radarr", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Radarr:BaseUrl"]!);
+    client.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Radarr:ApiKey"]!);
+});
+builder.Services.AddHttpClient("sonarr", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Sonarr:BaseUrl"]!);
+    client.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Sonarr:ApiKey"]!);
+});
 
 // CORS for React frontend (Vite default port)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
               .AllowAnyHeader()
               .AllowAnyMethod());
 });

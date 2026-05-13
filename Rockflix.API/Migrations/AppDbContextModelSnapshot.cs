@@ -22,6 +22,35 @@ namespace Rockflix.API.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Rockflix.API.Models.Favorite", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MovieId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TvShowId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+                    b.HasIndex("MovieId");
+                    b.HasIndex("TvShowId");
+
+                    b.ToTable("Favorites");
+                });
+
             modelBuilder.Entity("Rockflix.API.Models.Episode", b =>
                 {
                     b.Property<int>("Id")
@@ -286,6 +315,29 @@ namespace Rockflix.API.Migrations
             modelBuilder.Entity("Rockflix.API.Models.User", b =>
                 {
                     b.Navigation("WatchHistory");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.Favorite", b =>
+                {
+                    b.HasOne("Rockflix.API.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Rockflix.API.Models.Movie", "Movie")
+                        .WithMany()
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Rockflix.API.Models.TvShow", "TvShow")
+                        .WithMany()
+                        .HasForeignKey("TvShowId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
+                    b.Navigation("Movie");
+                    b.Navigation("TvShow");
                 });
 #pragma warning restore 612, 618
         }

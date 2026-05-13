@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: rockflix
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: wiztec12
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rockflix-net
+
+  api:
+    build: ./Rockflix.API
+    restart: always
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=rockflix;Username=postgres;Password=wiztec12"
+      ASPNETCORE_URLS: "http://+:5244"
+      Media__RootPath: "/media"
+    volumes:
+      - C:/Users/rockp/Downloads/Media:/media
+    depends_on:
+      - db
+    networks:
+      - rockflix-net
+
+  client:
+    build: ./rockflix-client
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - rockflix-net
+
+volumes:
+  postgres_data:
+
+networks:
+  rockflix-net:

@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TvShow> TvShows => Set<TvShow>();
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<WatchHistory> WatchHistory => Set<WatchHistory>();
+    public DbSet<Favorite> Favorites => Set<Favorite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
