@@ -46,5 +46,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany(e => e.WatchHistory)
             .HasForeignKey(w => w.EpisodeId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TelegramRequest>()
+            .HasOne(r => r.User)
+            .WithMany(u => u.Requests)
+            .HasForeignKey(r => r.ChatId)
+            .HasPrincipalKey(u => u.ChatId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
