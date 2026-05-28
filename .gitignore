@@ -5,7 +5,8 @@ obj/
 *.suo
 .vs/
 
-# Secrets — use appsettings.Development.json for real values locally
+# Secrets — never commit real credentials
+appsettings.json
 appsettings.Development.json
 
 # Local planning docs
