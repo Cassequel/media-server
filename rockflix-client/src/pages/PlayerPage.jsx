@@ -11,6 +11,8 @@ export default function PlayerPage() {
   const saveRef = useRef(null)
   const [meta, setMeta] = useState(null)
   const [token, setToken] = useState('')
+  const [bufferPct, setBufferPct] = useState(0)
+  const [playerReady, setPlayerReady] = useState(false)
 
   useEffect(() => {
     const t = localStorage.getItem('token') ?? ''
@@ -54,6 +56,12 @@ export default function PlayerPage() {
     ? `http://localhost:5244/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}`
     : ''
 
+  function handleProgress(e) {
+    const v = e.target
+    if (!v.duration || !v.buffered.length) return
+    setBufferPct(Math.round((v.buffered.end(v.buffered.length - 1) / v.duration) * 100))
+  }
+
   return (
     <div className="min-h-screen bg-black flex flex-col">
       {/* Top bar */}
@@ -77,16 +85,50 @@ export default function PlayerPage() {
       </header>
 
       {/* Video */}
-      <div className="flex-1 flex items-center justify-center bg-black">
+      <div className="flex-1 flex items-center justify-center bg-black relative">
         {streamUrl && (
           <video
             ref={videoRef}
             src={streamUrl}
             controls
             onLoadedMetadata={e => { e.target.muted = false; e.target.volume = 1 }}
+            onCanPlay={() => setPlayerReady(true)}
+            onWaiting={() => setPlayerReady(false)}
+            onProgress={handleProgress}
             className="w-full max-h-[calc(100vh-56px)]"
             onEnded={saveProgress}
           />
+        )}
+
+        {/* Buffer loading overlay — solid bg so it covers the blank video frame */}
+        {streamUrl && !playerReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
+            {meta?.backdropPath && (
+              <img
+                src={meta.backdropPath}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover opacity-20 blur-2xl scale-110"
+              />
+            )}
+            <div className="relative z-10 flex flex-col items-center gap-5 px-8 w-full max-w-sm">
+              {meta?.title && (
+                <h2 className="text-xl font-black text-[#f9dcd4] text-center tracking-tight" style={{ fontFamily: 'Epilogue, sans-serif' }}>
+                  {meta.title}
+                </h2>
+              )}
+              <div className="w-full flex flex-col gap-2">
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#ff9069] rounded-full transition-all duration-500"
+                    style={{ width: `${bufferPct}%` }}
+                  />
+                </div>
+                <p className="text-[#e3bfb3] text-xs text-right tabular-nums" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                  {bufferPct > 0 ? `${bufferPct}%` : 'Loading…'}
+                </p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

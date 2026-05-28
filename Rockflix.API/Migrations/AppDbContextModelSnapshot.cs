@@ -22,6 +22,69 @@ namespace Rockflix.API.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Rockflix.API.Models.TelegramUser", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("AuthorizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasDefaultValue(true)
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique();
+
+                    b.ToTable("TelegramUsers");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.TelegramRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RequestText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolvedTitle")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MediaType")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId");
+
+                    b.ToTable("TelegramRequests");
+                });
+
             modelBuilder.Entity("Rockflix.API.Models.Favorite", b =>
                 {
                     b.Property<int>("Id")
@@ -259,6 +322,18 @@ namespace Rockflix.API.Migrations
                         .HasFilter("\"MovieId\" IS NOT NULL");
 
                     b.ToTable("WatchHistory");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.TelegramRequest", b =>
+                {
+                    b.HasOne("Rockflix.API.Models.TelegramUser", "User")
+                        .WithMany("Requests")
+                        .HasForeignKey("ChatId")
+                        .HasPrincipalKey("ChatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Rockflix.API.Models.Episode", b =>

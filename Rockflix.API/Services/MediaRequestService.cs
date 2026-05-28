@@ -72,28 +72,8 @@ public class MediaRequestService
     {
         var response = await _claude.Messages.Create(new MessageCreateParams
         {
-            Model = "claude-opus-4-7",
-            MaxTokens = 512,
-            Thinking = new ThinkingConfigAdaptive(),
-            OutputConfig = new OutputConfig
-            {
-                Format = new JsonOutputFormat
-                {
-                    Schema = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("""
-                        {
-                          "type": "object",
-                          "properties": {
-                            "media_type": { "type": "string", "enum": ["movie", "tv"] },
-                            "title": { "type": "string" },
-                            "year": { "type": ["integer", "null"] },
-                            "season": { "type": ["integer", "null"] },
-                            "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
-                          },
-                          "required": ["media_type", "title", "year", "season", "confidence"]
-                        }
-                        """)!
-                }
-            },
+            Model = "claude-haiku-4-5-20251001",
+            MaxTokens = 256,
             System = new List<TextBlockParam>
             {
                 new() { Text = SystemPrompt, CacheControl = new CacheControlEphemeral() }

@@ -11,6 +11,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<WatchHistory> WatchHistory => Set<WatchHistory>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
+    public DbSet<TelegramUser> TelegramUsers => Set<TelegramUser>();
+    public DbSet<TelegramRequest> TelegramRequests => Set<TelegramRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

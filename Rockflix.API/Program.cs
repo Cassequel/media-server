@@ -61,12 +61,18 @@ builder.Services.AddHttpClient("sonarr", client =>
     client.BaseAddress = new Uri(builder.Configuration["Sonarr:BaseUrl"]!);
     client.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Sonarr:ApiKey"]!);
 });
+builder.Services.AddHttpClient("telegram");
 
-// CORS for React frontend (Vite default port)
+// CORS for React frontend
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "http://localhost:3000",
+                "https://watch.aidenswanson.com"
+              )
               .AllowAnyHeader()
               .AllowAnyMethod());
 });

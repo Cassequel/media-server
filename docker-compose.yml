@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: rockflix
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: wiztec12
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -15,11 +15,20 @@ services:
     build: ./Rockflix.API
     restart: always
     environment:
-      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=rockflix;Username=postgres;Password=wiztec12"
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=rockflix;Username=postgres;Password=${DB_PASSWORD}"
       ASPNETCORE_URLS: "http://+:5244"
-      Media__RootPath: "/media"
+      ASPNETCORE_ENVIRONMENT: "Production"
+      Media__RootPath: "/mnt/media"
+      Jwt__Secret: "${JWT_SECRET}"
+      Jwt__Issuer: "Rockflix"
+      Jwt__Audience: "RockflixUsers"
+      Tmdb__ApiKey: "${TMDB_API_KEY}"
+      Radarr__BaseUrl: "http://192.168.86.101:7878"
+      Radarr__ApiKey: "${RADARR_API_KEY}"
+      Sonarr__BaseUrl: "http://192.168.86.101:8989"
+      Sonarr__ApiKey: "${SONARR_API_KEY}"
     volumes:
-      - C:/Users/rockp/Downloads/Media:/media
+      - /mnt/media:/mnt/media
     depends_on:
       - db
     networks:

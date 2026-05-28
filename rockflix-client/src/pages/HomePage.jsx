@@ -79,13 +79,21 @@ export default function HomePage() {
               Favorites
             </button>
             {user?.isAdmin && (
-              <button
-                onClick={scanMedia}
-                disabled={scanning}
-                className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium disabled:opacity-40"
-              >
-                {scanning ? 'Scanning…' : 'Scan Media'}
-              </button>
+              <>
+                <button
+                  onClick={scanMedia}
+                  disabled={scanning}
+                  className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium disabled:opacity-40"
+                >
+                  {scanning ? 'Scanning…' : 'Scan Media'}
+                </button>
+                <button
+                  onClick={() => navigate('/admin/telegram-users')}
+                  className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium"
+                >
+                  Telegram Users
+                </button>
+              </>
             )}
           </nav>
         </div>

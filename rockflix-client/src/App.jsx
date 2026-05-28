@@ -7,6 +7,7 @@ import MovieDetailPage from './pages/MovieDetailPage'
 import TvShowPage from './pages/TvShowPage'
 import PlayerPage from './pages/PlayerPage'
 import FavoritesPage from './pages/FavoritesPage'
+import TelegramUsersPage from './pages/TelegramUsersPage'
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -29,6 +30,7 @@ function AppRoutes() {
       <Route path="/watch/movie/:id" element={<PrivateRoute><PlayerPage /></PrivateRoute>} />
       <Route path="/watch/episode/:id" element={<PrivateRoute><PlayerPage /></PrivateRoute>} />
       <Route path="/favorites" element={<PrivateRoute><FavoritesPage /></PrivateRoute>} />
+      <Route path="/admin/telegram-users" element={<PrivateRoute><TelegramUsersPage /></PrivateRoute>} />
     </Routes>
   )
 }
