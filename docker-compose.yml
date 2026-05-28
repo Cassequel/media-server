@@ -27,6 +27,8 @@ services:
       Radarr__ApiKey: "${RADARR_API_KEY}"
       Sonarr__BaseUrl: "http://192.168.86.101:8989"
       Sonarr__ApiKey: "${SONARR_API_KEY}"
+      Telegram__BotToken: "${TELEGRAM_BOT_TOKEN}"
+      Telegram__InviteCode: "${TELEGRAM_INVITE_CODE}"
     volumes:
       - /mnt/media:/mnt/media
     depends_on:
