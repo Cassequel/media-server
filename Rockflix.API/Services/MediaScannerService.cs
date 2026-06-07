@@ -126,7 +126,7 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         return ext is ".mp4" or ".mkv" or ".avi" or ".mov" or ".m4v";
     }
 
-    [GeneratedRegex(@"^(.+)\s\((\d{4})\)$")]
+    [GeneratedRegex(@"^(.+?)\s\((\d{4})\)")]
     private static partial Regex MovieTitleRegex();
 
     [GeneratedRegex(@"[Ss](\d{1,2})[Ee](\d{1,2})")]
