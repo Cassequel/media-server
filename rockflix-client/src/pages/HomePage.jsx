@@ -110,20 +110,28 @@ export default function HomePage() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
-          {usage && !user?.isAdmin && (
+          {usage && (
             <div className="hidden md:flex flex-col gap-1 items-end">
-              <span className="text-[10px] text-[#e3bfb3] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-                {formatBytes(usage.usedBytes)} / {formatBytes(usage.limitBytes)}
-              </span>
-              <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min((usage.usedBytes / usage.limitBytes) * 100, 100)}%`,
-                    background: usage.usedBytes / usage.limitBytes > 0.8 ? '#ff4444' : 'linear-gradient(90deg, #ff9069, #ff7948)'
-                  }}
-                />
-              </div>
+              {user?.isAdmin ? (
+                <span className="text-[10px] text-[#e3bfb3] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                  {formatBytes(usage.usedBytes)} used
+                </span>
+              ) : (
+                <>
+                  <span className="text-[10px] text-[#e3bfb3] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                    {formatBytes(usage.usedBytes)} / {formatBytes(usage.limitBytes)}
+                  </span>
+                  <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min((usage.usedBytes / usage.limitBytes) * 100, 100)}%`,
+                        background: usage.usedBytes / usage.limitBytes > 0.8 ? '#ff4444' : 'linear-gradient(90deg, #ff9069, #ff7948)'
+                      }}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
           <span className="text-[#e3bfb3] text-sm hidden md:block" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
