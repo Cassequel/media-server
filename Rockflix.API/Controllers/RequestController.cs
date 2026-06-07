@@ -55,5 +55,17 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
         return Ok(new { message = result.Message });
     }
 
+    [HttpGet("pending")]
+    public async Task<IActionResult> GetPending()
+    {
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var pending = await db.MediaRequests
+            .Where(r => r.UserId == userId && r.Status == "pending" && r.ResolvedTitle != null)
+            .OrderByDescending(r => r.RequestedAt)
+            .Select(r => new { r.Id, r.ResolvedTitle, r.MediaType, r.RequestedAt })
+            .ToListAsync();
+        return Ok(pending);
+    }
+
     public record MediaRequestDto(string Text);
 }

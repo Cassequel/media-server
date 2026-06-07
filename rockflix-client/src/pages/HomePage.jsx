@@ -31,6 +31,7 @@ export default function HomePage() {
   const [tvShows, setTvShows] = useState(STUB_TV)
   const [scanning, setScanning] = useState(false)
   const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
+  const [pendingRequests, setPendingRequests] = useState([])
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function HomePage() {
       setTvShows(data)
     }).catch(() => {})
     api.get('/watchhistory/continue-watching').then(({ data }) => setContinueWatching(data)).catch(() => {})
+    api.get('/request/pending').then(({ data }) => setPendingRequests(data)).catch(() => {})
   }, [])
 
   async function scanMedia() {
@@ -228,6 +230,9 @@ export default function HomePage() {
       {/* Movies */}
       <MediaRow title="Movies">
         <RequestCard onClick={() => setRequestModal('movie')} />
+        {pendingRequests.filter(r => r.mediaType === 'movie').map(r => (
+          <DownloadingCard key={r.id} title={r.resolvedTitle} />
+        ))}
         {movies.map(movie => (
           <PosterCard key={movie.id} item={movie} onClick={() => navigate(`/movie/${movie.id}`)} />
         ))}
@@ -236,6 +241,9 @@ export default function HomePage() {
       {/* TV Shows */}
       <MediaRow title="TV Shows">
         <RequestCard onClick={() => setRequestModal('tv')} />
+        {pendingRequests.filter(r => r.mediaType === 'tv').map(r => (
+          <DownloadingCard key={r.id} title={r.resolvedTitle} />
+        ))}
         {tvShows.map(show => (
           <PosterCard key={show.id} item={show} onClick={() => navigate(`/tvshow/${show.id}`)} />
         ))}
@@ -367,6 +375,27 @@ function ContinueCard({ item, navigate }) {
         </p>
       )}
     </button>
+  )
+}
+
+function DownloadingCard({ title }) {
+  return (
+    <div className="flex-shrink-0 w-40 text-left opacity-50">
+      <div className="aspect-[2/3] rounded-xl overflow-hidden mb-3 relative bg-[#2b1c17] flex flex-col items-center justify-center gap-3">
+        <span className="material-symbols-outlined text-4xl text-[#ff9069] animate-spin" style={{ animationDuration: '2s' }}>
+          downloading
+        </span>
+        <span className="text-[10px] uppercase tracking-widest text-[#e3bfb3] text-center px-2" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          Downloading
+        </span>
+      </div>
+      <h3
+        className="font-bold text-[#f9dcd4] truncate text-sm"
+        style={{ fontFamily: 'Epilogue, sans-serif' }}
+      >
+        {title}
+      </h3>
+    </div>
   )
 }
 
