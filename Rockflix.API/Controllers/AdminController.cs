@@ -71,6 +71,25 @@ public class AdminController(AppDbContext db, MediaScannerService scanner) : Con
         return Ok(result);
     }
 
+    [HttpGet("users/{id}/requests")]
+    public async Task<IActionResult> GetUserRequests(int id)
+    {
+        var requests = await db.MediaRequests
+            .Where(r => r.UserId == id)
+            .OrderByDescending(r => r.RequestedAt)
+            .Select(r => new {
+                r.Id,
+                r.RequestText,
+                r.MediaType,
+                r.ResolvedTitle,
+                r.Status,
+                r.RequestedAt,
+                r.FileSizeBytes
+            })
+            .ToListAsync();
+        return Ok(requests);
+    }
+
     [HttpPatch("users/{id}/revoke")]
     public async Task<IActionResult> RevokeUser(int id)
     {

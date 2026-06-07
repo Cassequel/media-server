@@ -18,6 +18,7 @@ export default function TelegramUsersPage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [actionLoading, setActionLoading] = useState(null)
+  const [requestsModal, setRequestsModal] = useState(null) // { username, requests }
 
   useEffect(() => {
     if (!user?.isAdmin) { navigate('/'); return }
@@ -54,6 +55,16 @@ export default function TelegramUsersPage() {
       // silent
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  async function viewRequests(u) {
+    if (!u.id) return
+    try {
+      const { data } = await api.get(`/admin/users/${u.id}/requests`)
+      setRequestsModal({ username: u.username, requests: data })
+    } catch {
+      // silent
     }
   }
 
@@ -146,6 +157,7 @@ export default function TelegramUsersPage() {
                       actionLoading={actionLoading}
                       onToggleActive={toggleActive}
                       onToggleAdmin={toggleAdmin}
+                      onViewRequests={viewRequests}
                     />
                   ))}
                 </div>
@@ -166,6 +178,7 @@ export default function TelegramUsersPage() {
                       actionLoading={actionLoading}
                       onToggleActive={toggleActive}
                       onToggleAdmin={null}
+                      onViewRequests={null}
                     />
                   ))}
                 </div>
@@ -175,10 +188,55 @@ export default function TelegramUsersPage() {
         )}
       </div>
     </div>
+
+    {/* Requests modal */}
+    {requestsModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        onClick={e => { if (e.target === e.currentTarget) setRequestsModal(null) }}
+      >
+        <div className="bg-[#1e100b] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-white/5">
+            <h2 className="text-lg font-black uppercase tracking-tighter text-[#f9dcd4]" style={{ fontFamily: 'Epilogue, sans-serif' }}>
+              {requestsModal.username}'s Requests
+            </h2>
+            <button onClick={() => setRequestsModal(null)} className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          <div className="overflow-y-auto flex-1 px-6 py-4 flex flex-col gap-3">
+            {requestsModal.requests.length === 0 ? (
+              <p className="text-[#e3bfb3] text-sm text-center py-8" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>No requests yet.</p>
+            ) : requestsModal.requests.map(r => (
+              <div key={r.id} className="flex items-start gap-3 bg-[#2b1c17] rounded-xl px-4 py-3">
+                <span className={`material-symbols-outlined text-sm mt-0.5 flex-shrink-0 ${
+                  r.status === 'completed' ? 'text-green-400' : r.status === 'failed' ? 'text-red-400' : 'text-[#ff9069]'
+                }`} style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}>
+                  {r.status === 'completed' ? 'check_circle' : r.status === 'failed' ? 'cancel' : 'downloading'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-[#f9dcd4] truncate" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                    {r.resolvedTitle ?? r.requestText}
+                    {r.resolvedTitle && r.requestText !== r.resolvedTitle && (
+                      <span className="text-[#5b4138] ml-2 text-xs">"{r.requestText}"</span>
+                    )}
+                  </p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    {r.mediaType && <span className="text-[10px] uppercase tracking-widest text-[#e3bfb3]" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{r.mediaType}</span>}
+                    <span className="text-[10px] text-[#5b4138]" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{new Date(r.requestedAt).toLocaleDateString()}</span>
+                    {r.fileSizeBytes > 0 && <span className="text-[10px] text-[#5b4138]" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{formatBytes(r.fileSizeBytes)}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
   )
 }
 
-function UserCard({ u, actionLoading, onToggleActive, onToggleAdmin }) {
+function UserCard({ u, actionLoading, onToggleActive, onToggleAdmin, onViewRequests }) {
   const usedPct = u.limitBytes ? Math.min((u.totalSizeBytes / u.limitBytes) * 100, 100) : 0
   const isOverLimit = usedPct > 80
 
@@ -266,6 +324,15 @@ function UserCard({ u, actionLoading, onToggleActive, onToggleAdmin }) {
               style={{ fontFamily: 'Space Grotesk, sans-serif' }}
             >
               {actionLoading === `admin-${u.id}` ? '…' : u.isAdmin ? 'Demote' : 'Make Admin'}
+            </button>
+          )}
+          {onViewRequests && u.requestCount > 0 && (
+            <button
+              onClick={() => onViewRequests(u)}
+              className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/5 text-[#e3bfb3] hover:bg-white/10 transition-all active:scale-95"
+              style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+            >
+              {u.requestCount} Request{u.requestCount !== 1 ? 's' : ''}
             </button>
           )}
         </div>
