@@ -11,8 +11,46 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
     public async Task ScanAsync()
     {
+        await PruneDeletedAsync();
         await ScanMoviesAsync();
         await ScanTvShowsAsync();
+    }
+
+    private async Task PruneDeletedAsync()
+    {
+        // Remove movies whose file no longer exists
+        var movies = await db.Movies.ToListAsync();
+        var deletedMovies = movies.Where(m => !File.Exists(m.FilePath)).ToList();
+        if (deletedMovies.Any())
+        {
+            db.Movies.RemoveRange(deletedMovies);
+            foreach (var m in deletedMovies)
+                logger.LogInformation("Removed missing movie: {Title}", m.Title);
+        }
+
+        // Remove episodes whose file no longer exists
+        var episodes = await db.Episodes.Include(e => e.TvShow).ToListAsync();
+        var deletedEpisodes = episodes.Where(e => !File.Exists(e.FilePath)).ToList();
+        if (deletedEpisodes.Any())
+        {
+            db.Episodes.RemoveRange(deletedEpisodes);
+            foreach (var e in deletedEpisodes)
+                logger.LogInformation("Removed missing episode: {Show} S{S}E{E}", e.TvShow.Title, e.SeasonNumber, e.EpisodeNumber);
+        }
+
+        await db.SaveChangesAsync();
+
+        // Remove TV shows with no remaining episodes
+        var emptyShows = await db.TvShows
+            .Where(s => !db.Episodes.Any(e => e.TvShowId == s.Id))
+            .ToListAsync();
+        if (emptyShows.Any())
+        {
+            db.TvShows.RemoveRange(emptyShows);
+            foreach (var s in emptyShows)
+                logger.LogInformation("Removed empty show: {Title}", s.Title);
+            await db.SaveChangesAsync();
+        }
     }
 
     private async Task ScanMoviesAsync()
