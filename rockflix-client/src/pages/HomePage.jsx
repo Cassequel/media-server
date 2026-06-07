@@ -3,22 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 
-const STUB_MOVIES = [
-  { id: 's1', title: 'Neon City', year: 2023, genre: 'Sci-Fi', tmdbRating: 8.4, posterPath: 'https://picsum.photos/seed/neoncity/300/450', backdropPath: 'https://picsum.photos/seed/neoncity/1280/720', description: 'A rogue detective hunts a killer through a rain-soaked megacity where technology and humanity have blurred beyond recognition.' },
-  { id: 's2', title: 'The Last Signal', year: 2022, genre: 'Thriller', tmdbRating: 7.9, posterPath: 'https://picsum.photos/seed/lastsignal/300/450', backdropPath: 'https://picsum.photos/seed/lastsignal/1280/720', description: 'After a deep-space probe goes silent, one woman risks everything to find out what it found.' },
-  { id: 's3', title: 'Iron Meridian', year: 2024, genre: 'Action', tmdbRating: 7.5, posterPath: 'https://picsum.photos/seed/ironmeridian/300/450', backdropPath: 'https://picsum.photos/seed/ironmeridian/1280/720', description: 'A retired soldier is pulled back into the field when a global conspiracy targets the people he loves.' },
-  { id: 's4', title: 'Coldwater', year: 2021, genre: 'Drama', tmdbRating: 8.1, posterPath: 'https://picsum.photos/seed/coldwater/300/450', backdropPath: 'https://picsum.photos/seed/coldwater/1280/720', description: 'Two estranged brothers must face the wilderness and each other after their father goes missing.' },
-  { id: 's5', title: 'Parallax', year: 2023, genre: 'Mystery', tmdbRating: 7.7, posterPath: 'https://picsum.photos/seed/parallaxfilm/300/450', backdropPath: 'https://picsum.photos/seed/parallaxfilm/1280/720', description: 'A physicist wakes with no memory to find her research has been weaponized.' },
-  { id: 's6', title: 'Ember', year: 2022, genre: 'Drama', tmdbRating: 8.6, posterPath: 'https://picsum.photos/seed/emberfilm/300/450', backdropPath: 'https://picsum.photos/seed/emberfilm/1280/720', description: 'Set against a dying coal town, a family fights to keep their legacy alive.' },
-]
-
-const STUB_TV = [
-  { id: 't1', title: 'Outpost Nine', year: 2023, genre: 'Sci-Fi', tmdbRating: 8.7, posterPath: 'https://picsum.photos/seed/outpostnine/300/450', backdropPath: 'https://picsum.photos/seed/outpostnine/1280/720', description: 'The crew of a remote space station uncovers a signal that rewrites the history of human civilization.' },
-  { id: 't2', title: 'Hollow Crown', year: 2022, genre: 'Drama', tmdbRating: 8.9, posterPath: 'https://picsum.photos/seed/hollowcrown/300/450', backdropPath: 'https://picsum.photos/seed/hollowcrown/1280/720', description: 'Political intrigue tears apart a fictional European monarchy across four sweeping seasons.' },
-  { id: 't3', title: 'Static', year: 2024, genre: 'Horror', tmdbRating: 7.8, posterPath: 'https://picsum.photos/seed/staticshow/300/450', backdropPath: 'https://picsum.photos/seed/staticshow/1280/720', description: 'A journalist starts receiving transmissions from people missing for decades.' },
-  { id: 't4', title: 'Meridian Falls', year: 2021, genre: 'Crime', tmdbRating: 8.2, posterPath: 'https://picsum.photos/seed/meridianfalls/300/450', backdropPath: 'https://picsum.photos/seed/meridianfalls/1280/720', description: 'A detective with a fractured past investigates murders that mirror her own forgotten childhood.' },
-  { id: 't5', title: 'Groundwork', year: 2023, genre: 'Thriller', tmdbRating: 7.6, posterPath: 'https://picsum.photos/seed/groundwork/300/450', backdropPath: 'https://picsum.photos/seed/groundwork/1280/720', description: 'An architect discovers her firm has been secretly building something for a shadowy client.' },
-]
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 GB'
@@ -29,12 +13,12 @@ function formatBytes(bytes) {
 export default function HomePage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [hero, setHero] = useState(STUB_MOVIES[0])
-  const [heroList, setHeroList] = useState(STUB_MOVIES.slice(0, 4))
+  const [hero, setHero] = useState(null)
+  const [heroList, setHeroList] = useState([])
   const [heroIndex, setHeroIndex] = useState(0)
   const [continueWatching, setContinueWatching] = useState([])
-  const [movies, setMovies] = useState(STUB_MOVIES)
-  const [tvShows, setTvShows] = useState(STUB_TV)
+  const [movies, setMovies] = useState([])
+  const [tvShows, setTvShows] = useState([])
   const [scanning, setScanning] = useState(false)
   const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
   const [pendingRequests, setPendingRequests] = useState([])
@@ -43,15 +27,20 @@ export default function HomePage() {
 
   useEffect(() => {
     api.get('/movies').then(({ data }) => {
-      if (data.length === 0) return
       setMovies(data)
-      const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, 4)
-      setHeroList(shuffled)
-      setHero(shuffled[0])
+      if (data.length > 0) {
+        const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, 4)
+        setHeroList(shuffled)
+        setHero(shuffled[0])
+      }
     }).catch(() => {})
     api.get('/tvshows').then(({ data }) => {
-      if (data.length === 0) return
       setTvShows(data)
+      if (data.length > 0 && !hero) {
+        const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, 4)
+        setHeroList(shuffled)
+        setHero(shuffled[0])
+      }
     }).catch(() => {})
     api.get('/watchhistory/continue-watching').then(({ data }) => setContinueWatching(data)).catch(() => {})
     api.get('/request/pending').then(({ data }) => setPendingRequests(data)).catch(() => {})
