@@ -133,7 +133,13 @@ public class MediaRequestService
             addOptions = new { searchForMovie = true }
         });
 
-        if (!addResp.IsSuccessStatusCode && addResp.StatusCode != System.Net.HttpStatusCode.BadRequest)
+        if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            var body = await addResp.Content.ReadAsStringAsync();
+            _logger.LogWarning("Radarr 400 for {Title}: {Body}", movie.Title, body);
+            if (!body.Contains("already")) throw new HttpRequestException($"Radarr rejected: {body}");
+        }
+        else if (!addResp.IsSuccessStatusCode)
             throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
 
         var message = addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
@@ -172,7 +178,13 @@ public class MediaRequestService
             addOptions = new { searchForMissingEpisodes = true }
         });
 
-        if (!addResp.IsSuccessStatusCode && addResp.StatusCode != System.Net.HttpStatusCode.BadRequest)
+        if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            var body = await addResp.Content.ReadAsStringAsync();
+            _logger.LogWarning("Sonarr 400 for {Title}: {Body}", series.Title, body);
+            if (!body.Contains("already")) throw new HttpRequestException($"Sonarr rejected: {body}");
+        }
+        else if (!addResp.IsSuccessStatusCode)
             throw new HttpRequestException($"Sonarr returned {addResp.StatusCode}");
 
         var seasonMsg = parsed.Season.HasValue ? $" Season {parsed.Season}" : "";
