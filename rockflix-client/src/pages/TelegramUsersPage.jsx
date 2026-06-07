@@ -10,6 +10,7 @@ export default function TelegramUsersPage() {
   const [loading, setLoading] = useState(true)
   const [expandedChat, setExpandedChat] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
+  const [fetchError, setFetchError] = useState('')
 
   useEffect(() => {
     if (!user?.isAdmin) { navigate('/'); return }
@@ -20,8 +21,9 @@ export default function TelegramUsersPage() {
     try {
       const { data } = await api.get('/admin/telegram-users')
       setUsers(data)
-    } catch {
-      // handle error
+    } catch (err) {
+      console.error('Failed to fetch telegram users:', err)
+      setFetchError(err.response?.data?.message ?? 'Failed to load users.')
     } finally {
       setLoading(false)
     }
@@ -48,7 +50,7 @@ export default function TelegramUsersPage() {
   return (
     <div className="min-h-screen bg-[#1e100b] text-[#f9dcd4] pb-16">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex justify-between items-center px-8 h-16 bg-[#0e0e0e]/80 backdrop-blur-xl">
+      <header className="fixed top-0 left-0 right-0 z-50 flex justify-between items-center px-12 h-16 bg-[#0e0e0e]/80 backdrop-blur-xl">
         <div className="flex items-center gap-6">
           <button
             onClick={() => navigate('/')}
@@ -71,7 +73,7 @@ export default function TelegramUsersPage() {
         </button>
       </header>
 
-      <div className="pt-24 px-8 max-w-5xl mx-auto">
+      <div className="pt-40 px-8 max-w-5xl mx-auto">
         {/* Page title */}
         <div className="mb-10">
           <h1
@@ -92,7 +94,7 @@ export default function TelegramUsersPage() {
             { label: 'Active', value: activeUsers },
             { label: 'Total Requests', value: totalRequests },
           ].map(stat => (
-            <div key={stat.label} className="bg-[#2b1c17] rounded-2xl p-5">
+            <div key={stat.label} className="bg-[#2b1c17] rounded-2xl p-7">
               <p
                 className="text-3xl font-black text-[#ff9069]"
                 style={{ fontFamily: 'Epilogue, sans-serif' }}
@@ -113,6 +115,10 @@ export default function TelegramUsersPage() {
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <span className="material-symbols-outlined text-4xl text-[#ff9069] animate-spin">progress_activity</span>
+          </div>
+        ) : fetchError ? (
+          <div className="text-center py-24 text-[#ffb4ab]" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            {fetchError}
           </div>
         ) : users.length === 0 ? (
           <div className="text-center py-24 text-[#e3bfb3]" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>

@@ -48,7 +48,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<MediaScannerService>();
-builder.Services.AddScoped<MediaRequestService>();
+builder.Services.AddSingleton<MediaRequestService>();
 
 // Named HTTP clients for Radarr and Sonarr
 builder.Services.AddHttpClient("radarr", client =>

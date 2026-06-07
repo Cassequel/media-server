@@ -3,34 +3,47 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 
+const STUB_MOVIES = [
+  { id: 's1', title: 'Neon City', year: 2023, genre: 'Sci-Fi', tmdbRating: 8.4, posterPath: 'https://picsum.photos/seed/neoncity/300/450', backdropPath: 'https://picsum.photos/seed/neoncity/1280/720', description: 'A rogue detective hunts a killer through a rain-soaked megacity where technology and humanity have blurred beyond recognition.' },
+  { id: 's2', title: 'The Last Signal', year: 2022, genre: 'Thriller', tmdbRating: 7.9, posterPath: 'https://picsum.photos/seed/lastsignal/300/450', backdropPath: 'https://picsum.photos/seed/lastsignal/1280/720', description: 'After a deep-space probe goes silent, one woman risks everything to find out what it found.' },
+  { id: 's3', title: 'Iron Meridian', year: 2024, genre: 'Action', tmdbRating: 7.5, posterPath: 'https://picsum.photos/seed/ironmeridian/300/450', backdropPath: 'https://picsum.photos/seed/ironmeridian/1280/720', description: 'A retired soldier is pulled back into the field when a global conspiracy targets the people he loves.' },
+  { id: 's4', title: 'Coldwater', year: 2021, genre: 'Drama', tmdbRating: 8.1, posterPath: 'https://picsum.photos/seed/coldwater/300/450', backdropPath: 'https://picsum.photos/seed/coldwater/1280/720', description: 'Two estranged brothers must face the wilderness and each other after their father goes missing.' },
+  { id: 's5', title: 'Parallax', year: 2023, genre: 'Mystery', tmdbRating: 7.7, posterPath: 'https://picsum.photos/seed/parallaxfilm/300/450', backdropPath: 'https://picsum.photos/seed/parallaxfilm/1280/720', description: 'A physicist wakes with no memory to find her research has been weaponized.' },
+  { id: 's6', title: 'Ember', year: 2022, genre: 'Drama', tmdbRating: 8.6, posterPath: 'https://picsum.photos/seed/emberfilm/300/450', backdropPath: 'https://picsum.photos/seed/emberfilm/1280/720', description: 'Set against a dying coal town, a family fights to keep their legacy alive.' },
+]
+
+const STUB_TV = [
+  { id: 't1', title: 'Outpost Nine', year: 2023, genre: 'Sci-Fi', tmdbRating: 8.7, posterPath: 'https://picsum.photos/seed/outpostnine/300/450', backdropPath: 'https://picsum.photos/seed/outpostnine/1280/720', description: 'The crew of a remote space station uncovers a signal that rewrites the history of human civilization.' },
+  { id: 't2', title: 'Hollow Crown', year: 2022, genre: 'Drama', tmdbRating: 8.9, posterPath: 'https://picsum.photos/seed/hollowcrown/300/450', backdropPath: 'https://picsum.photos/seed/hollowcrown/1280/720', description: 'Political intrigue tears apart a fictional European monarchy across four sweeping seasons.' },
+  { id: 't3', title: 'Static', year: 2024, genre: 'Horror', tmdbRating: 7.8, posterPath: 'https://picsum.photos/seed/staticshow/300/450', backdropPath: 'https://picsum.photos/seed/staticshow/1280/720', description: 'A journalist starts receiving transmissions from people missing for decades.' },
+  { id: 't4', title: 'Meridian Falls', year: 2021, genre: 'Crime', tmdbRating: 8.2, posterPath: 'https://picsum.photos/seed/meridianfalls/300/450', backdropPath: 'https://picsum.photos/seed/meridianfalls/1280/720', description: 'A detective with a fractured past investigates murders that mirror her own forgotten childhood.' },
+  { id: 't5', title: 'Groundwork', year: 2023, genre: 'Thriller', tmdbRating: 7.6, posterPath: 'https://picsum.photos/seed/groundwork/300/450', backdropPath: 'https://picsum.photos/seed/groundwork/1280/720', description: 'An architect discovers her firm has been secretly building something for a shadowy client.' },
+]
+
 export default function HomePage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [hero, setHero] = useState(null)
-  const [heroList, setHeroList] = useState([])
+  const [hero, setHero] = useState(STUB_MOVIES[0])
+  const [heroList, setHeroList] = useState(STUB_MOVIES.slice(0, 4))
   const [heroIndex, setHeroIndex] = useState(0)
   const [continueWatching, setContinueWatching] = useState([])
-  const [movies, setMovies] = useState([])
-  const [tvShows, setTvShows] = useState([])
+  const [movies, setMovies] = useState(STUB_MOVIES)
+  const [tvShows, setTvShows] = useState(STUB_TV)
   const [scanning, setScanning] = useState(false)
+  const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
   const intervalRef = useRef(null)
 
   useEffect(() => {
     api.get('/movies').then(({ data }) => {
-      setMovies(data)
       if (data.length === 0) return
+      setMovies(data)
       const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, 4)
       setHeroList(shuffled)
-      setHero(shuffled[0] ?? null)
+      setHero(shuffled[0])
     }).catch(() => {})
     api.get('/tvshows').then(({ data }) => {
+      if (data.length === 0) return
       setTvShows(data)
-      setHeroList(prev => {
-        if (prev.length > 0) return prev
-        const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, 4)
-        setHero(shuffled[0] ?? null)
-        return shuffled
-      })
     }).catch(() => {})
     api.get('/watchhistory/continue-watching').then(({ data }) => setContinueWatching(data)).catch(() => {})
   }, [])
@@ -213,21 +226,23 @@ export default function HomePage() {
       )}
 
       {/* Movies */}
-      {movies.length > 0 && (
-        <MediaRow title="Movies">
-          {movies.map(movie => (
-            <PosterCard key={movie.id} item={movie} onClick={() => navigate(`/movie/${movie.id}`)} />
-          ))}
-        </MediaRow>
-      )}
+      <MediaRow title="Movies">
+        <RequestCard onClick={() => setRequestModal('movie')} />
+        {movies.map(movie => (
+          <PosterCard key={movie.id} item={movie} onClick={() => navigate(`/movie/${movie.id}`)} />
+        ))}
+      </MediaRow>
 
       {/* TV Shows */}
-      {tvShows.length > 0 && (
-        <MediaRow title="TV Shows">
-          {tvShows.map(show => (
-            <PosterCard key={show.id} item={show} onClick={() => navigate(`/tvshow/${show.id}`)} />
-          ))}
-        </MediaRow>
+      <MediaRow title="TV Shows">
+        <RequestCard onClick={() => setRequestModal('tv')} />
+        {tvShows.map(show => (
+          <PosterCard key={show.id} item={show} onClick={() => navigate(`/tvshow/${show.id}`)} />
+        ))}
+      </MediaRow>
+
+      {requestModal && (
+        <RequestModal type={requestModal} onClose={() => setRequestModal(null)} />
       )}
 
       {/* Mobile bottom nav */}
@@ -264,7 +279,7 @@ function MediaRow({ title, children }) {
       >
         {title}
       </h2>
-      <div className="flex gap-5 overflow-x-auto pb-6" style={{ scrollbarWidth: 'thin' }}>
+      <div className="flex gap-5 overflow-x-auto pb-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#5b4138 transparent' }}>
         {children}
       </div>
     </div>
@@ -352,5 +367,113 @@ function ContinueCard({ item, navigate }) {
         </p>
       )}
     </button>
+  )
+}
+
+function RequestCard({ onClick }) {
+  return (
+    <button onClick={onClick} className="flex-shrink-0 w-40 text-left group cursor-pointer">
+      <div className="aspect-[2/3] rounded-xl overflow-hidden mb-3 relative bg-[#2b1c17] border-2 border-dashed border-[#5b4138] group-hover:border-[#ff9069] transition-colors flex flex-col items-center justify-center gap-2">
+        <span
+          className="material-symbols-outlined text-4xl text-[#5b4138] group-hover:text-[#ff9069] transition-colors"
+        >
+          add
+        </span>
+      </div>
+      <h3
+        className="font-bold text-[#5b4138] group-hover:text-[#ff9069] transition-colors truncate text-sm"
+        style={{ fontFamily: 'Epilogue, sans-serif' }}
+      >
+        Request
+      </h3>
+    </button>
+  )
+}
+
+function RequestModal({ type, onClose }) {
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!text.trim()) return
+    setLoading(true)
+    try {
+      const { data } = await api.post('/request', { text: text.trim() })
+      setResult({ ok: true, message: data.message })
+    } catch (err) {
+      setResult({ ok: false, message: err.response?.data?.message ?? 'Something went wrong.' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-[#1e100b] border border-white/10 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2
+            className="text-2xl font-black uppercase tracking-tighter text-[#f9dcd4]"
+            style={{ fontFamily: 'Epilogue, sans-serif' }}
+          >
+            Request {type === 'movie' ? 'a Movie' : 'a TV Show'}
+          </h2>
+          <button onClick={onClose} className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        {result ? (
+          <div>
+            <p
+              className={`text-sm mb-6 leading-relaxed ${result.ok ? 'text-[#f9dcd4]' : 'text-[#ffb4ab]'}`}
+              style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+            >
+              {result.message}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setText(''); setResult(null) }}
+                className="flex-1 bg-[#2b1c17] text-[#f9dcd4] px-6 py-3 rounded-full font-bold hover:bg-[#372621] transition-colors text-sm"
+                style={{ fontFamily: 'Epilogue, sans-serif' }}
+              >
+                Request Another
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 px-6 py-3 rounded-full font-bold text-sm text-[#5c1900] hover:brightness-110 active:scale-95 transition-all"
+                style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <input
+              autoFocus
+              type="text"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={type === 'movie' ? 'e.g. Dune Part Two' : 'e.g. latest season of Severance'}
+              className="w-full bg-[#2b1c17] border border-white/10 rounded-xl px-4 py-3 text-[#f9dcd4] placeholder-[#5b4138] focus:outline-none focus:border-[#ff9069] transition-colors mb-6 text-sm"
+              style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+            />
+            <button
+              type="submit"
+              disabled={loading || !text.trim()}
+              className="w-full px-6 py-3 rounded-full font-bold text-[#5c1900] hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 text-sm"
+              style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
+            >
+              {loading ? 'Requesting…' : 'Request'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
   )
 }

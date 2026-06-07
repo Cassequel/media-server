@@ -20,12 +20,75 @@ public class AdminController(AppDbContext db, MediaScannerService scanner) : Con
     }
 
     [HttpGet("users")]
-    public async Task<IActionResult> GetUsers()
+    public async Task<IActionResult> GetAllUsers()
     {
-        var users = await db.Users
-            .Select(u => new { u.Id, u.Username, u.Email, u.IsAdmin, u.CreatedAt })
+        const long limitBytes = 20L * 1024 * 1024 * 1024;
+
+        var webUsers = await db.Users
+            .Include(u => u.Requests)
+            .OrderByDescending(u => u.CreatedAt)
             .ToListAsync();
-        return Ok(users);
+
+        var linkedChatIds = webUsers
+            .Where(u => u.TelegramChatId.HasValue)
+            .Select(u => u.TelegramChatId!.Value)
+            .ToHashSet();
+
+        var telegramOnly = await db.TelegramUsers
+            .Include(u => u.Requests)
+            .Where(u => !linkedChatIds.Contains(u.ChatId))
+            .OrderByDescending(u => u.AuthorizedAt)
+            .ToListAsync();
+
+        var result = webUsers.Select(u => new UserDto(
+            Id: u.Id,
+            Source: "web",
+            Username: u.Username,
+            Email: u.Email,
+            IsAdmin: u.IsAdmin,
+            IsActive: u.IsActive,
+            CreatedAt: u.CreatedAt,
+            TelegramChatId: u.TelegramChatId,
+            IsTelegram: u.TelegramChatId.HasValue,
+            RequestCount: u.Requests.Count,
+            TotalSizeBytes: u.Requests.Sum(r => r.FileSizeBytes ?? 0),
+            LimitBytes: u.IsAdmin ? (long?)null : limitBytes
+        )).Concat(telegramOnly.Select(t => new UserDto(
+            Id: null,
+            Source: "telegram",
+            Username: t.DisplayName ?? $"Telegram {t.ChatId}",
+            Email: null,
+            IsAdmin: false,
+            IsActive: t.IsActive,
+            CreatedAt: t.AuthorizedAt,
+            TelegramChatId: t.ChatId,
+            IsTelegram: true,
+            RequestCount: t.Requests.Count,
+            TotalSizeBytes: 0,
+            LimitBytes: limitBytes
+        ))).ToList();
+
+        return Ok(result);
+    }
+
+    [HttpPatch("users/{id}/revoke")]
+    public async Task<IActionResult> RevokeUser(int id)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        user.IsActive = false;
+        await db.SaveChangesAsync();
+        return Ok(new { user.Id, user.IsActive });
+    }
+
+    [HttpPatch("users/{id}/restore")]
+    public async Task<IActionResult> RestoreUser(int id)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        user.IsActive = true;
+        await db.SaveChangesAsync();
+        return Ok(new { user.Id, user.IsActive });
     }
 
     [HttpDelete("users/{id}")]
@@ -34,7 +97,6 @@ public class AdminController(AppDbContext db, MediaScannerService scanner) : Con
         var user = await db.Users.FindAsync(id);
         if (user == null) return NotFound();
         if (user.IsAdmin) return BadRequest(new { message = "Cannot delete an admin user." });
-
         db.Users.Remove(user);
         await db.SaveChangesAsync();
         return NoContent();
@@ -45,49 +107,17 @@ public class AdminController(AppDbContext db, MediaScannerService scanner) : Con
     {
         var user = await db.Users.FindAsync(id);
         if (user == null) return NotFound();
-
         user.IsAdmin = !user.IsAdmin;
         await db.SaveChangesAsync();
         return Ok(new { user.Id, user.Username, user.IsAdmin });
     }
 
-    // --- Telegram User Management ---
-
-    [HttpGet("telegram-users")]
-    public async Task<IActionResult> GetTelegramUsers()
-    {
-        var users = await db.TelegramUsers
-            .Include(u => u.Requests.OrderByDescending(r => r.RequestedAt).Take(20))
-            .OrderByDescending(u => u.AuthorizedAt)
-            .Select(u => new
-            {
-                u.ChatId,
-                u.DisplayName,
-                u.AuthorizedAt,
-                u.IsActive,
-                Requests = u.Requests
-                    .OrderByDescending(r => r.RequestedAt)
-                    .Take(20)
-                    .Select(r => new
-                    {
-                        r.RequestText,
-                        r.ResolvedTitle,
-                        r.MediaType,
-                        r.Success,
-                        r.RequestedAt
-                    })
-            })
-            .ToListAsync();
-
-        return Ok(users);
-    }
-
+    // Keep telegram-only revoke/restore for users not linked to a web account
     [HttpPatch("telegram-users/{chatId}/revoke")]
     public async Task<IActionResult> RevokeTelegramUser(long chatId)
     {
         var user = await db.TelegramUsers.FirstOrDefaultAsync(u => u.ChatId == chatId);
         if (user == null) return NotFound();
-
         user.IsActive = false;
         await db.SaveChangesAsync();
         return Ok(new { user.ChatId, user.IsActive });
@@ -98,9 +128,22 @@ public class AdminController(AppDbContext db, MediaScannerService scanner) : Con
     {
         var user = await db.TelegramUsers.FirstOrDefaultAsync(u => u.ChatId == chatId);
         if (user == null) return NotFound();
-
         user.IsActive = true;
         await db.SaveChangesAsync();
         return Ok(new { user.ChatId, user.IsActive });
     }
+
+    private record UserDto(
+        int? Id,
+        string Source,
+        string Username,
+        string? Email,
+        bool IsAdmin,
+        bool IsActive,
+        DateTime CreatedAt,
+        long? TelegramChatId,
+        bool IsTelegram,
+        int RequestCount,
+        long TotalSizeBytes,
+        long? LimitBytes);
 }

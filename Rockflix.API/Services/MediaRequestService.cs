@@ -39,32 +39,33 @@ public class MediaRequestService
         _claude = new AnthropicClient(new Anthropic.Core.ClientOptions { ApiKey = config["Anthropic:ApiKey"]! });
     }
 
-    public async Task<string> ProcessRequestAsync(string smsText)
+    public async Task<MediaResult> ProcessRequestAsync(string requestText)
     {
         MediaParsed? parsed;
         try
         {
-            parsed = await ParseWithClaudeAsync(smsText);
+            parsed = await ParseWithClaudeAsync(requestText);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Claude parsing failed for: {Text}", smsText);
-            return "Sorry, I couldn't understand that request. Try something like: 'add Dune Part Two' or 'download season 2 of Severance'.";
+            _logger.LogError(ex, "Claude parsing failed for: {Text}", requestText);
+            return new MediaResult("Sorry, I couldn't understand that request. Try something like: 'add Dune Part Two' or 'download season 2 of Severance'.", "", null, null);
         }
 
         if (parsed.Confidence == "low")
-            return $"I'm not sure what you're looking for. Did you mean '{parsed.Title}'? Reply with a more specific title.";
+            return new MediaResult($"I'm not sure what you're looking for. Did you mean '{parsed.Title}'? Reply with a more specific title.", parsed.MediaType, parsed.Title, null);
 
         try
         {
-            return parsed.MediaType == "movie"
+            var (message, externalId) = parsed.MediaType == "movie"
                 ? await AddMovieAsync(parsed)
                 : await AddTvShowAsync(parsed);
+            return new MediaResult(message, parsed.MediaType, parsed.Title, externalId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to add media: {Title}", parsed.Title);
-            return $"Found '{parsed.Title}' but couldn't add it. Check that Radarr/Sonarr is running.";
+            return new MediaResult($"Found '{parsed.Title}' but couldn't add it. Check that Radarr/Sonarr is running.", parsed.MediaType, parsed.Title, null);
         }
     }
 
@@ -101,7 +102,7 @@ public class MediaRequestService
             ?? throw new InvalidOperationException("Failed to deserialize Claude response");
     }
 
-    private async Task<string> AddMovieAsync(MediaParsed parsed)
+    private async Task<(string message, int? externalId)> AddMovieAsync(MediaParsed parsed)
     {
         var http = _httpClientFactory.CreateClient("radarr");
         var rootFolder = _config["Radarr:RootFolderPath"]!;
@@ -126,12 +127,13 @@ public class MediaRequestService
         if (!addResp.IsSuccessStatusCode && addResp.StatusCode != System.Net.HttpStatusCode.BadRequest)
             throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
 
-        return addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
+        var message = addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
             ? $"'{movie.Title}' is already in your library."
             : $"Added '{movie.Title}' ({movie.Year}) — download starting soon!";
+        return (message, movie.TmdbId);
     }
 
-    private async Task<string> AddTvShowAsync(MediaParsed parsed)
+    private async Task<(string message, int? externalId)> AddTvShowAsync(MediaParsed parsed)
     {
         var http = _httpClientFactory.CreateClient("sonarr");
         var rootFolder = _config["Sonarr:RootFolderPath"]!;
@@ -165,17 +167,20 @@ public class MediaRequestService
             throw new HttpRequestException($"Sonarr returned {addResp.StatusCode}");
 
         var seasonMsg = parsed.Season.HasValue ? $" Season {parsed.Season}" : "";
-        return addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
+        var message = addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
             ? $"'{series.Title}'{seasonMsg} is already in your library."
             : $"Added '{series.Title}'{seasonMsg} — download starting soon!";
+        return (message, series.TvdbId);
     }
+
+    public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId);
 
     private record MediaParsed(
         [property: JsonPropertyName("media_type")] string MediaType,
-        string Title,
-        int? Year,
-        int? Season,
-        string Confidence);
+        [property: JsonPropertyName("title")] string Title,
+        [property: JsonPropertyName("year")] int? Year,
+        [property: JsonPropertyName("season")] int? Season,
+        [property: JsonPropertyName("confidence")] string Confidence);
 
     private record RadarrMovie(
         [property: JsonPropertyName("tmdbId")] int TmdbId,

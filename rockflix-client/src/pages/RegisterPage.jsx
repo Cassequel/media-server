@@ -29,23 +29,23 @@ export default function RegisterPage() {
       <div className="hidden lg:flex relative w-3/5 h-screen overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#0e0e0e] via-[#1e100b] to-[#2b1c17]" />
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, transparent 0%, #1e100b 100%)' }} />
-        <div className="relative z-10 flex flex-col justify-end p-24 w-full h-full">
+        <div className="relative z-10 flex flex-col justify-end p-12 w-full h-full">
           <span
-            className="text-[#ffb59c] text-xs uppercase tracking-[0.4em] mb-4"
+            className="text-[#ffb59c] text-xs uppercase tracking-[0.4em] mb-2"
             style={{ fontFamily: 'Space Grotesk, sans-serif' }}
           >
             Your Private Theater
           </span>
           <h1
-            className="text-8xl font-black tracking-tighter leading-none mb-8"
+            className="text-8xl font-black tracking-tighter leading-none mb-3"
             style={{ fontFamily: 'Epilogue, sans-serif' }}
           >
             Rockflix
           </h1>
-          <p className="text-[#e3bfb3] max-w-md text-lg leading-relaxed">
+          <p className="text-[#e3bfb3] max-w-md text-lg leading-snug">
             Your personal media server. Stream your collection anywhere, anytime.
           </p>
-          <div className="mt-12 flex gap-4 items-center">
+          <div className="mt-6 flex gap-4 items-center">
             <div className="h-px w-12 bg-[#5b4138]" />
             <span
               className="text-[10px] text-[#aa897f] tracking-widest uppercase"
@@ -58,7 +58,7 @@ export default function RegisterPage() {
       </div>
 
       {/* Right — form */}
-      <div className="w-full lg:w-2/5 min-h-screen bg-[#271813] flex items-center justify-center p-8 md:p-16 relative">
+      <div className="w-full lg:w-2/5 h-screen bg-[#271813] flex items-center justify-center p-8 md:p-16 relative overflow-hidden">
         {/* Mobile branding */}
         <div className="absolute top-12 left-12 lg:hidden">
           <span className="text-2xl font-bold tracking-tighter text-[#ff9069]" style={{ fontFamily: 'Epilogue, sans-serif' }}>
@@ -67,7 +67,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="w-full max-w-sm">
-          <header className="mb-12">
+          <header className="mb-8">
             <h2
               className="text-4xl font-bold tracking-tight mb-2"
               style={{ fontFamily: 'Epilogue, sans-serif' }}
@@ -77,7 +77,7 @@ export default function RegisterPage() {
             <p className="text-[#e3bfb3]">Create your account to start watching.</p>
           </header>
 
-          <form onSubmit={handleSubmit} className="space-y-7">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <p className="text-[#ffb4ab] text-sm">{error}</p>
             )}
@@ -146,7 +146,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="pt-4">
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={loading}
@@ -157,7 +157,7 @@ export default function RegisterPage() {
               </button>
             </div>
 
-            <div className="pt-4 text-center">
+            <div className="pt-1 text-center">
               <p className="text-[#e3bfb3] text-sm">
                 Already have an account?{' '}
                 <Link to="/login" className="text-[#ffb59c] font-bold ml-1 hover:underline underline-offset-4">

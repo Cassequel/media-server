@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<TelegramUser> TelegramUsers => Set<TelegramUser>();
     public DbSet<TelegramRequest> TelegramRequests => Set<TelegramRequest>();
+    public DbSet<MediaRequest> MediaRequests => Set<MediaRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +24,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Username)
             .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.TelegramChatId)
+            .IsUnique()
+            .HasFilter("\"TelegramChatId\" IS NOT NULL");
 
         // A user can have one watch history entry per movie (upsert on progress)
         modelBuilder.Entity<WatchHistory>()

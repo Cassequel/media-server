@@ -26,7 +26,7 @@ public class SmsController : ControllerBase
 
         var twiml = $"""
             <?xml version="1.0" encoding="UTF-8"?>
-            <Response><Message>{System.Web.HttpUtility.HtmlEncode(result)}</Message></Response>
+            <Response><Message>{System.Web.HttpUtility.HtmlEncode(result.Message)}</Message></Response>
             """;
 
         return Content(twiml, "application/xml");
