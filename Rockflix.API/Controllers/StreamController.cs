@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Rockflix.API.Data;
@@ -16,7 +17,7 @@ public class StreamController(AppDbContext db) : ControllerBase
         if (movie == null || !System.IO.File.Exists(movie.FilePath))
             return NotFound();
 
-        return PhysicalFile(movie.FilePath, GetMimeType(movie.FilePath), enableRangeProcessing: true);
+        return StreamFile(movie.FilePath);
     }
 
     [HttpGet("episode/{id}")]
@@ -26,16 +27,34 @@ public class StreamController(AppDbContext db) : ControllerBase
         if (episode == null || !System.IO.File.Exists(episode.FilePath))
             return NotFound();
 
-        return PhysicalFile(episode.FilePath, GetMimeType(episode.FilePath), enableRangeProcessing: true);
+        return StreamFile(episode.FilePath);
     }
 
-    private static string GetMimeType(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
+    private IActionResult StreamFile(string filePath)
+    {
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+        // Non-MKV files: serve directly
+        if (ext != ".mkv" && ext != ".avi" && ext != ".mov")
+            return PhysicalFile(filePath, "video/mp4", enableRangeProcessing: true);
+
+        // MKV/AVI/MOV: remux to MP4 via FFmpeg (no re-encoding, just repackaging)
+        Response.ContentType = "video/mp4";
+        Response.Headers.Append("Cache-Control", "no-cache");
+
+        var psi = new ProcessStartInfo
         {
-            ".mkv" => "video/x-matroska",
-            ".webm" => "video/webm",
-            ".avi" => "video/x-msvideo",
-            ".mov" => "video/quicktime",
-            _ => "video/mp4"
+            FileName = "ffmpeg",
+            Arguments = $"-i \"{filePath}\" -c:v copy -c:a aac -movflags frag_keyframe+empty_moov+faststart -f mp4 pipe:1",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
+
+        var process = Process.Start(psi)!;
+        HttpContext.RequestAborted.Register(() => { try { process.Kill(); } catch { } });
+
+        return new FileStreamResult(process.StandardOutput.BaseStream, "video/mp4");
+    }
 }
