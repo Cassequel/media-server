@@ -98,6 +98,15 @@ public class MediaRequestService
         if (json is null)
             throw new InvalidOperationException("No text block in Claude response");
 
+        // Strip markdown code fences if present
+        json = json.Trim();
+        if (json.StartsWith("```"))
+        {
+            json = json.TrimStart('`');
+            if (json.StartsWith("json")) json = json[4..];
+            json = json.TrimEnd('`').Trim();
+        }
+
         return JsonSerializer.Deserialize<MediaParsed>(json)
             ?? throw new InvalidOperationException("Failed to deserialize Claude response");
     }
