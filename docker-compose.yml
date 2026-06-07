@@ -31,9 +31,7 @@ services:
       Telegram__InviteCode: "${TELEGRAM_INVITE_CODE}"
       Anthropic__ApiKey: "${ANTHROPIC_API_KEY}"
       Radarr__RootFolderPath: "/movies"
-      Radarr__QualityProfileId: "${RADARR_QUALITY_PROFILE_ID}"
       Sonarr__RootFolderPath: "/tv"
-      Sonarr__QualityProfileId: "${SONARR_QUALITY_PROFILE_ID}"
     volumes:
       - /mnt/media:/mnt/media
     depends_on:
