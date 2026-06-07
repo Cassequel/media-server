@@ -85,6 +85,7 @@ export default function TelegramUsersPage() {
   const telegramOnly = users.filter(u => u.source === 'telegram')
 
   return (
+    <>
     <div className="min-h-screen bg-[#1e100b] text-[#f9dcd4] pb-16">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex justify-between items-center px-12 h-16 bg-[#0e0e0e]/80 backdrop-blur-xl">
@@ -233,6 +234,7 @@ export default function TelegramUsersPage() {
         </div>
       </div>
     )}
+    </>
   )
 }
 
