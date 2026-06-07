@@ -53,7 +53,7 @@ export default function PlayerPage() {
   }, [meta, saveProgress])
 
   const streamUrl = token
-    ? `http://localhost:5244/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}`
+    ? `/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}`
     : ''
 
   function handleProgress(e) {
