@@ -55,6 +55,18 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
         return Ok(new { message = result.Message });
     }
 
+    [HttpGet("usage")]
+    public async Task<IActionResult> GetUsage()
+    {
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var usedBytes = await db.MediaRequests
+            .Where(r => r.UserId == userId)
+            .SumAsync(r => (long?)(r.FileSizeBytes ?? 0)) ?? 0;
+
+        const long limitBytes = 20L * 1024 * 1024 * 1024;
+        return Ok(new { usedBytes, limitBytes });
+    }
+
     [HttpGet("pending")]
     public async Task<IActionResult> GetPending()
     {

@@ -20,6 +20,12 @@ const STUB_TV = [
   { id: 't5', title: 'Groundwork', year: 2023, genre: 'Thriller', tmdbRating: 7.6, posterPath: 'https://picsum.photos/seed/groundwork/300/450', backdropPath: 'https://picsum.photos/seed/groundwork/1280/720', description: 'An architect discovers her firm has been secretly building something for a shadowy client.' },
 ]
 
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 GB'
+  const gb = bytes / (1024 * 1024 * 1024)
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+}
+
 export default function HomePage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -32,6 +38,7 @@ export default function HomePage() {
   const [scanning, setScanning] = useState(false)
   const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
   const [pendingRequests, setPendingRequests] = useState([])
+  const [usage, setUsage] = useState(null)
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -48,6 +55,7 @@ export default function HomePage() {
     }).catch(() => {})
     api.get('/watchhistory/continue-watching').then(({ data }) => setContinueWatching(data)).catch(() => {})
     api.get('/request/pending').then(({ data }) => setPendingRequests(data)).catch(() => {})
+    api.get('/request/usage').then(({ data }) => setUsage(data)).catch(() => {})
   }, [])
 
   async function scanMedia() {
@@ -113,6 +121,22 @@ export default function HomePage() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          {usage && !user?.isAdmin && (
+            <div className="hidden md:flex flex-col gap-1 items-end">
+              <span className="text-[10px] text-[#e3bfb3] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                {formatBytes(usage.usedBytes)} / {formatBytes(usage.limitBytes)}
+              </span>
+              <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min((usage.usedBytes / usage.limitBytes) * 100, 100)}%`,
+                    background: usage.usedBytes / usage.limitBytes > 0.8 ? '#ff4444' : 'linear-gradient(90deg, #ff9069, #ff7948)'
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <span className="text-[#e3bfb3] text-sm hidden md:block" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
             {user?.username}
           </span>
