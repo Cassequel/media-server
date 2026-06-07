@@ -106,7 +106,7 @@ public class MediaRequestService
     {
         var http = _httpClientFactory.CreateClient("radarr");
         var rootFolder = _config["Radarr:RootFolderPath"]!;
-        var qualityProfileId = int.Parse(_config["Radarr:QualityProfileId"]!);
+        const int qualityProfileId = 0;
 
         var lookup = await http.GetFromJsonAsync<RadarrMovie[]>(
             $"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
@@ -137,7 +137,7 @@ public class MediaRequestService
     {
         var http = _httpClientFactory.CreateClient("sonarr");
         var rootFolder = _config["Sonarr:RootFolderPath"]!;
-        var qualityProfileId = int.Parse(_config["Sonarr:QualityProfileId"]!);
+        const int qualityProfileId = 0;
 
         var lookup = await http.GetFromJsonAsync<SonarrSeries[]>(
             $"/api/v3/series/lookup?term={Uri.EscapeDataString(parsed.Title)}");
