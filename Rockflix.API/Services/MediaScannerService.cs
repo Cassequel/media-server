@@ -47,7 +47,14 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         {
             db.Movies.RemoveRange(deletedMovies);
             foreach (var m in deletedMovies)
+            {
                 logger.LogInformation("Removed missing movie: {Title}", m.Title);
+                var req = await db.MediaRequests
+                    .Where(r => r.MediaType == "movie" && r.ResolvedTitle != null &&
+                                EF.Functions.ILike(r.ResolvedTitle, m.Title) && r.Status == "completed")
+                    .FirstOrDefaultAsync();
+                if (req != null) { req.FileSizeBytes = 0; req.Status = "removed"; }
+            }
         }
 
         // Remove episodes whose file no longer exists
@@ -62,7 +69,7 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
         await db.SaveChangesAsync();
 
-        // Remove TV shows with no remaining episodes
+        // Remove TV shows with no remaining episodes and clear their storage
         var emptyShows = await db.TvShows
             .Where(s => !db.Episodes.Any(e => e.TvShowId == s.Id))
             .ToListAsync();
@@ -70,7 +77,14 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         {
             db.TvShows.RemoveRange(emptyShows);
             foreach (var s in emptyShows)
+            {
                 logger.LogInformation("Removed empty show: {Title}", s.Title);
+                var req = await db.MediaRequests
+                    .Where(r => r.MediaType == "tv" && r.ResolvedTitle != null &&
+                                EF.Functions.ILike(r.ResolvedTitle, s.Title) && r.Status == "completed")
+                    .FirstOrDefaultAsync();
+                if (req != null) { req.FileSizeBytes = 0; req.Status = "removed"; }
+            }
             await db.SaveChangesAsync();
         }
     }
