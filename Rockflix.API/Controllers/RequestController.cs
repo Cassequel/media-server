@@ -73,10 +73,15 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
         var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var pending = await db.MediaRequests
             .Where(r => r.UserId == userId && r.Status == "pending" && r.ResolvedTitle != null)
-            .GroupBy(r => new { r.ResolvedTitle, r.MediaType })
-            .Select(g => g.OrderByDescending(r => r.RequestedAt).First())
+            .OrderByDescending(r => r.RequestedAt)
             .Select(r => new { r.Id, r.ResolvedTitle, r.MediaType, r.RequestedAt })
             .ToListAsync();
+
+        // Deduplicate by title+type in memory
+        pending = pending
+            .GroupBy(r => new { r.ResolvedTitle, r.MediaType })
+            .Select(g => g.First())
+            .ToList();
         return Ok(pending);
     }
 
