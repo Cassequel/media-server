@@ -15,6 +15,55 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
 {
     private const long LimitBytes = 20L * 1024 * 1024 * 1024;
 
+    [HttpPost("parse")]
+    public async Task<IActionResult> ParseRequest([FromBody] MediaRequestDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Text))
+            return BadRequest(new { message = "Text is required." });
+
+        var parsed = await mediaRequestService.ParseRequestAsync(dto.Text);
+        if (parsed is null)
+            return Ok(new { found = false });
+
+        return Ok(new { found = true, title = parsed.Title, mediaType = parsed.MediaType, season = parsed.Season });
+    }
+
+    [HttpPost("confirm")]
+    public async Task<IActionResult> ConfirmRequest([FromBody] ConfirmRequestDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Title) || string.IsNullOrWhiteSpace(dto.MediaType))
+            return BadRequest(new { message = "Title and media type are required." });
+
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return Unauthorized();
+        if (!user.IsActive) return Forbid();
+
+        if (!user.IsAdmin)
+        {
+            var used = await db.MediaRequests
+                .Where(r => r.UserId == userId)
+                .SumAsync(r => (long?)(r.FileSizeBytes ?? 0)) ?? 0;
+            if (used >= LimitBytes)
+                return BadRequest(new { message = "You've reached your 20 GB download limit." });
+        }
+
+        var result = await mediaRequestService.ProcessParsedAsync(dto.Title, dto.MediaType, dto.Season);
+
+        db.MediaRequests.Add(new MediaRequest
+        {
+            UserId = userId,
+            RequestText = dto.Title,
+            MediaType = result.MediaType,
+            ResolvedTitle = result.ResolvedTitle,
+            ExternalId = result.ExternalId,
+            Status = result.ExternalId.HasValue ? "pending" : "failed"
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = result.Message });
+    }
+
     [HttpPost]
     public async Task<IActionResult> RequestMedia([FromBody] MediaRequestDto dto)
     {
@@ -86,4 +135,5 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
     }
 
     public record MediaRequestDto(string Text);
+    public record ConfirmRequestDto(string Title, string MediaType, int? Season);
 }

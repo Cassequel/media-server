@@ -39,6 +39,36 @@ public class MediaRequestService
         _claude = new AnthropicClient(new Anthropic.Core.ClientOptions { ApiKey = config["Anthropic:ApiKey"]! });
     }
 
+    public async Task<MediaParsed?> ParseRequestAsync(string requestText)
+    {
+        try
+        {
+            var parsed = await ParseWithClaudeAsync(requestText);
+            return parsed.Confidence == "low" ? null : parsed;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<MediaResult> ProcessParsedAsync(string title, string mediaType, int? season)
+    {
+        var parsed = new MediaParsed(mediaType, title, null, season, "high");
+        try
+        {
+            var (message, externalId) = mediaType == "movie"
+                ? await AddMovieAsync(parsed)
+                : await AddTvShowAsync(parsed);
+            return new MediaResult(message, mediaType, title, externalId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to add confirmed media: {Title}", title);
+            return new MediaResult($"Found '{title}' but couldn't add it. Check that Radarr/Sonarr is running.", mediaType, title, null);
+        }
+    }
+
     public async Task<MediaResult> ProcessRequestAsync(string requestText)
     {
         MediaParsed? parsed;
@@ -196,7 +226,7 @@ public class MediaRequestService
 
     public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId);
 
-    private record MediaParsed(
+    public record MediaParsed(
         [property: JsonPropertyName("media_type")] string MediaType,
         [property: JsonPropertyName("title")] string Title,
         [property: JsonPropertyName("year")] int? Year,

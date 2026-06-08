@@ -439,6 +439,7 @@ function RequestCard({ onClick }) {
 function RequestModal({ type, onClose }) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [confirmation, setConfirmation] = useState(null) // { title, mediaType, season }
   const [result, setResult] = useState(null)
 
   async function submit(e) {
@@ -446,7 +447,24 @@ function RequestModal({ type, onClose }) {
     if (!text.trim()) return
     setLoading(true)
     try {
-      const { data } = await api.post('/request', { text: text.trim() })
+      const { data } = await api.post('/request/parse', { text: text.trim() })
+      if (!data.found) {
+        setResult({ ok: false, message: "Sorry, I couldn't understand that request. Try something like: 'Dune Part Two' or 'season 2 of Severance'." })
+      } else {
+        setConfirmation({ title: data.title, mediaType: data.mediaType, season: data.season })
+      }
+    } catch (err) {
+      setResult({ ok: false, message: err.response?.data?.message ?? 'Something went wrong.' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function confirm() {
+    setLoading(true)
+    try {
+      const { data } = await api.post('/request/confirm', confirmation)
+      setConfirmation(null)
       setResult({ ok: true, message: data.message })
     } catch (err) {
       setResult({ ok: false, message: err.response?.data?.message ?? 'Something went wrong.' })
@@ -483,7 +501,7 @@ function RequestModal({ type, onClose }) {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => { setText(''); setResult(null) }}
+                onClick={() => { setText(''); setResult(null); setConfirmation(null) }}
                 className="flex-1 bg-[#2b1c17] text-[#f9dcd4] px-6 py-3 rounded-full font-bold hover:bg-[#372621] transition-colors text-sm"
                 style={{ fontFamily: 'Epilogue, sans-serif' }}
               >
@@ -495,6 +513,39 @@ function RequestModal({ type, onClose }) {
                 style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        ) : confirmation ? (
+          <div>
+            <p className="text-[#e3bfb3] text-sm mb-3" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+              I found:
+            </p>
+            <p className="text-2xl font-black text-[#f9dcd4] mb-1" style={{ fontFamily: 'Epilogue, sans-serif' }}>
+              {confirmation.title}
+              {confirmation.season && <span className="text-[#ff9069]"> — Season {confirmation.season}</span>}
+            </p>
+            <p className="text-[10px] uppercase tracking-widest text-[#5b4138] mb-8" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+              {confirmation.mediaType === 'movie' ? 'Movie' : 'TV Show'}
+            </p>
+            <p className="text-[#e3bfb3] text-sm mb-6" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+              Is this what you're looking for?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmation(null)}
+                className="flex-1 bg-[#2b1c17] text-[#f9dcd4] px-6 py-3 rounded-full font-bold hover:bg-[#372621] transition-colors text-sm"
+                style={{ fontFamily: 'Epilogue, sans-serif' }}
+              >
+                No, go back
+              </button>
+              <button
+                onClick={confirm}
+                disabled={loading}
+                className="flex-1 px-6 py-3 rounded-full font-bold text-sm text-[#5c1900] hover:brightness-110 active:scale-95 transition-all disabled:opacity-40"
+                style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
+              >
+                {loading ? 'Adding…' : 'Yes, add it'}
               </button>
             </div>
           </div>
@@ -515,7 +566,7 @@ function RequestModal({ type, onClose }) {
               className="w-full px-6 py-3 rounded-full font-bold text-[#5c1900] hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 text-sm"
               style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
             >
-              {loading ? 'Requesting…' : 'Request'}
+              {loading ? 'Searching…' : 'Search'}
             </button>
           </form>
         )}
