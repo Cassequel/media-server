@@ -18,6 +18,28 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
     private async Task PruneDeletedAsync()
     {
+        // Mark pending movie requests as completed if the movie is already in the library
+        var pendingMovies = await db.MediaRequests
+            .Where(r => r.Status == "pending" && r.MediaType == "movie" && r.ResolvedTitle != null)
+            .ToListAsync();
+        foreach (var req in pendingMovies)
+        {
+            var exists = await db.Movies.AnyAsync(m => EF.Functions.ILike(m.Title, req.ResolvedTitle!));
+            if (exists) req.Status = "completed";
+        }
+
+        // Mark pending TV requests as completed if the show is already in the library
+        var pendingTv = await db.MediaRequests
+            .Where(r => r.Status == "pending" && r.MediaType == "tv" && r.ResolvedTitle != null)
+            .ToListAsync();
+        foreach (var req in pendingTv)
+        {
+            var exists = await db.TvShows.AnyAsync(s => EF.Functions.ILike(s.Title, req.ResolvedTitle!));
+            if (exists) req.Status = "completed";
+        }
+
+        await db.SaveChangesAsync();
+
         // Remove movies whose file no longer exists
         var movies = await db.Movies.ToListAsync();
         var deletedMovies = movies.Where(m => !File.Exists(m.FilePath)).ToList();
