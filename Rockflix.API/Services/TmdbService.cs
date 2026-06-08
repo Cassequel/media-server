@@ -23,17 +23,35 @@ public class TmdbService(HttpClient http, IConfiguration config)
 
         if (results.GetArrayLength() == 0) return null;
 
-        var first = results[0];
+        // If year provided, prefer the result whose release year matches
+        JsonElement best = results[0];
+        if (year.HasValue)
+        {
+            for (int i = 0; i < results.GetArrayLength(); i++)
+            {
+                var item = results[i];
+                if (item.TryGetProperty("release_date", out var rd) &&
+                    rd.GetString() is string releaseDate &&
+                    releaseDate.Length >= 4 &&
+                    int.TryParse(releaseDate[..4], out int releaseYear) &&
+                    releaseYear == year.Value)
+                {
+                    best = item;
+                    break;
+                }
+            }
+        }
+
         return new TmdbMovieResult
         {
-            TmdbId = first.GetProperty("id").GetInt32(),
-            Title = first.TryGetProperty("title", out var t) ? t.GetString() : title,
-            Description = first.TryGetProperty("overview", out var o) ? o.GetString() : null,
-            PosterPath = first.TryGetProperty("poster_path", out var p) && p.ValueKind != JsonValueKind.Null
+            TmdbId = best.GetProperty("id").GetInt32(),
+            Title = best.TryGetProperty("title", out var t) ? t.GetString() : title,
+            Description = best.TryGetProperty("overview", out var o) ? o.GetString() : null,
+            PosterPath = best.TryGetProperty("poster_path", out var p) && p.ValueKind != JsonValueKind.Null
                 ? ImageBase + p.GetString() : null,
-            BackdropPath = first.TryGetProperty("backdrop_path", out var b) && b.ValueKind != JsonValueKind.Null
+            BackdropPath = best.TryGetProperty("backdrop_path", out var b) && b.ValueKind != JsonValueKind.Null
                 ? "https://image.tmdb.org/t/p/w1280" + b.GetString() : null,
-            Rating = first.TryGetProperty("vote_average", out var r) ? r.GetDouble() : null,
+            Rating = best.TryGetProperty("vote_average", out var r) ? r.GetDouble() : null,
             Genre = null
         };
     }
