@@ -451,7 +451,7 @@ function RequestModal({ type, onClose }) {
       if (!data.found) {
         setResult({ ok: false, message: "Sorry, I couldn't understand that request. Try something like: 'Dune Part Two' or 'season 2 of Severance'." })
       } else {
-        setConfirmation({ title: data.title, mediaType: data.mediaType, season: data.season })
+        setConfirmation({ title: data.title, mediaType: data.mediaType, season: data.season, tmdbId: data.tmdbId, tvdbId: data.tvdbId })
       }
     } catch (err) {
       setResult({ ok: false, message: err.response?.data?.message ?? 'Something went wrong.' })

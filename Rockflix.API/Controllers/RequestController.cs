@@ -21,11 +21,11 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
         if (string.IsNullOrWhiteSpace(dto.Text))
             return BadRequest(new { message = "Text is required." });
 
-        var parsed = await mediaRequestService.ParseRequestAsync(dto.Text);
-        if (parsed is null)
+        var lookup = await mediaRequestService.ParseAndLookupAsync(dto.Text);
+        if (lookup is null)
             return Ok(new { found = false });
 
-        return Ok(new { found = true, title = parsed.Title, mediaType = parsed.MediaType, season = parsed.Season });
+        return Ok(new { found = true, title = lookup.Title, mediaType = lookup.MediaType, season = lookup.Season, tmdbId = lookup.TmdbId, tvdbId = lookup.TvdbId });
     }
 
     [HttpPost("confirm")]
@@ -48,7 +48,7 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
                 return BadRequest(new { message = "You've reached your 20 GB download limit." });
         }
 
-        var result = await mediaRequestService.ProcessParsedAsync(dto.Title, dto.MediaType, dto.Season);
+        var result = await mediaRequestService.ProcessConfirmedAsync(dto.Title, dto.MediaType, dto.Season, dto.TmdbId, dto.TvdbId);
 
         db.MediaRequests.Add(new MediaRequest
         {
@@ -135,5 +135,5 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
     }
 
     public record MediaRequestDto(string Text);
-    public record ConfirmRequestDto(string Title, string MediaType, int? Season);
+    public record ConfirmRequestDto(string Title, string MediaType, int? Season, int? TmdbId, int? TvdbId);
 }

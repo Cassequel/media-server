@@ -39,12 +39,32 @@ public class MediaRequestService
         _claude = new AnthropicClient(new Anthropic.Core.ClientOptions { ApiKey = config["Anthropic:ApiKey"]! });
     }
 
-    public async Task<MediaParsed?> ParseRequestAsync(string requestText)
+    public async Task<ParsedLookup?> ParseAndLookupAsync(string requestText)
     {
         try
         {
             var parsed = await ParseWithClaudeAsync(requestText);
-            return parsed.Confidence == "low" ? null : parsed;
+            if (parsed.Confidence == "low") return null;
+
+            // Do the Radarr/Sonarr lookup now so we lock in the exact external ID
+            if (parsed.MediaType == "movie")
+            {
+                var http = _httpClientFactory.CreateClient("radarr");
+                var lookup = await http.GetFromJsonAsync<RadarrMovie[]>(
+                    $"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
+                var movie = lookup?.FirstOrDefault();
+                if (movie == null) return null;
+                return new ParsedLookup(movie.Title, "movie", null, movie.TmdbId, null);
+            }
+            else
+            {
+                var http = _httpClientFactory.CreateClient("sonarr");
+                var lookup = await http.GetFromJsonAsync<SonarrSeries[]>(
+                    $"/api/v3/series/lookup?term={Uri.EscapeDataString(parsed.Title)}");
+                var series = lookup?.FirstOrDefault();
+                if (series == null) return null;
+                return new ParsedLookup(series.Title, "tv", parsed.Season, null, series.TvdbId);
+            }
         }
         catch
         {
@@ -52,15 +72,41 @@ public class MediaRequestService
         }
     }
 
-    public async Task<MediaResult> ProcessParsedAsync(string title, string mediaType, int? season)
+    public async Task<MediaResult> ProcessConfirmedAsync(string title, string mediaType, int? season, int? tmdbId, int? tvdbId)
     {
-        var parsed = new MediaParsed(mediaType, title, null, season, "high");
         try
         {
-            var (message, externalId) = mediaType == "movie"
-                ? await AddMovieAsync(parsed)
-                : await AddTvShowAsync(parsed);
-            return new MediaResult(message, mediaType, title, externalId);
+            if (mediaType == "movie" && tmdbId.HasValue)
+            {
+                var http = _httpClientFactory.CreateClient("radarr");
+                var rootFolder = _config["Radarr:RootFolderPath"]!;
+                const int qualityProfileId = 4;
+
+                var addResp = await http.PostAsJsonAsync("/api/v3/movie", new
+                {
+                    tmdbId = tmdbId.Value,
+                    title,
+                    qualityProfileId,
+                    rootFolderPath = rootFolder,
+                    monitored = true,
+                    addOptions = new { searchForMovie = true }
+                });
+
+                if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                    return new MediaResult($"'{title}' is already in your library.", mediaType, title, tmdbId);
+                if (!addResp.IsSuccessStatusCode)
+                    throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
+
+                return new MediaResult($"Added '{title}' — download starting soon!", mediaType, title, tmdbId);
+            }
+            else if (mediaType == "tv" && tvdbId.HasValue)
+            {
+                var parsed = new MediaParsed(mediaType, title, null, season, "high");
+                var (message, externalId) = await AddTvShowAsync(parsed);
+                return new MediaResult(message, mediaType, title, externalId);
+            }
+
+            return new MediaResult($"Couldn't add '{title}'.", mediaType, title, null);
         }
         catch (Exception ex)
         {
@@ -68,6 +114,8 @@ public class MediaRequestService
             return new MediaResult($"Found '{title}' but couldn't add it. Check that Radarr/Sonarr is running.", mediaType, title, null);
         }
     }
+
+    public record ParsedLookup(string Title, string MediaType, int? Season, int? TmdbId, int? TvdbId);
 
     public async Task<MediaResult> ProcessRequestAsync(string requestText)
     {
