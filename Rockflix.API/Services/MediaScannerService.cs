@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Rockflix.API.Data;
@@ -101,14 +100,13 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
             if (await db.Movies.AnyAsync(m => m.FilePath == file)) continue;
 
             var (title, year) = ParseMovieFilename(Path.GetFileNameWithoutExtension(file));
-            var mp4Path = await EnsureMp4Async(file);
             var meta = await tmdb.SearchMovieAsync(title, year);
 
             var movie = new Movie
             {
                 Title = meta?.Title ?? title,
                 Year = year,
-                FilePath = mp4Path,
+                FilePath = file,
                 Description = meta?.Description,
                 PosterPath = meta?.PosterPath,
                 BackdropPath = meta?.BackdropPath,
@@ -159,8 +157,6 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
                 var (season, episode) = ParseEpisodeFilename(Path.GetFileNameWithoutExtension(file));
                 if (season == 0 || episode == 0) continue;
 
-                var ep4Path = await EnsureMp4Async(file);
-
                 TmdbEpisodeResult? epMeta = null;
                 if (show.TmdbId.HasValue)
                     epMeta = await tmdb.GetEpisodeAsync(show.TmdbId.Value, season, episode);
@@ -174,7 +170,7 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
                     Description = epMeta?.Description,
                     StillPath = epMeta?.StillPath,
                     RuntimeMinutes = epMeta?.RuntimeMinutes,
-                    FilePath = ep4Path
+                    FilePath = file
                 });
             }
 
@@ -196,40 +192,6 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         if (match.Success)
             return (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
         return (0, 0);
-    }
-
-    private async Task<string> EnsureMp4Async(string filePath)
-    {
-        var ext = Path.GetExtension(filePath).ToLowerInvariant();
-        if (ext == ".mp4") return filePath;
-
-        var mp4Path = Path.ChangeExtension(filePath, ".mp4");
-        if (File.Exists(mp4Path)) return mp4Path;
-
-        logger.LogInformation("Remuxing to MP4: {File}", Path.GetFileName(filePath));
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = "ffmpeg",
-            Arguments = $"-i \"{filePath}\" -c:v copy -c:a aac -movflags +faststart \"{mp4Path}\"",
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        var process = Process.Start(psi)!;
-        await process.WaitForExitAsync();
-
-        if (process.ExitCode == 0 && File.Exists(mp4Path))
-        {
-            File.Delete(filePath);
-            logger.LogInformation("Remux complete: {File}", Path.GetFileName(mp4Path));
-            return mp4Path;
-        }
-
-        logger.LogWarning("Remux failed for {File}, keeping original", Path.GetFileName(filePath));
-        if (File.Exists(mp4Path)) File.Delete(mp4Path);
-        return filePath;
     }
 
     private static bool IsVideoFile(string path)
