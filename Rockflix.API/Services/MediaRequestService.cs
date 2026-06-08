@@ -52,8 +52,13 @@ public class MediaRequestService
                 var http = _httpClientFactory.CreateClient("radarr");
                 var lookup = await http.GetFromJsonAsync<RadarrMovie[]>(
                     $"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
-                var movie = lookup?.FirstOrDefault();
-                if (movie == null) return null;
+                if (lookup == null || lookup.Length == 0) return null;
+
+                // Prefer exact year match, then closest title match
+                var movie = parsed.Year.HasValue
+                    ? lookup.FirstOrDefault(m => m.Year == parsed.Year.Value) ?? lookup[0]
+                    : lookup[0];
+
                 return new ParsedLookup(movie.Title, "movie", null, movie.TmdbId, null);
             }
             else
@@ -61,8 +66,12 @@ public class MediaRequestService
                 var http = _httpClientFactory.CreateClient("sonarr");
                 var lookup = await http.GetFromJsonAsync<SonarrSeries[]>(
                     $"/api/v3/series/lookup?term={Uri.EscapeDataString(parsed.Title)}");
-                var series = lookup?.FirstOrDefault();
-                if (series == null) return null;
+                if (lookup == null || lookup.Length == 0) return null;
+
+                var series = parsed.Year.HasValue
+                    ? lookup.FirstOrDefault(s => s.Year == parsed.Year.Value) ?? lookup[0]
+                    : lookup[0];
+
                 return new ParsedLookup(series.Title, "tv", parsed.Season, null, series.TvdbId);
             }
         }
