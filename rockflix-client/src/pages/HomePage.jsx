@@ -50,7 +50,7 @@ export default function HomePage() {
   async function scanMedia() {
     setScanning(true)
     try {
-      await api.post('/admin/scan')
+      await api.post('/media/scan')
       window.location.reload()
     } catch {
       setScanning(false)
@@ -90,22 +90,20 @@ export default function HomePage() {
             >
               Favorites
             </button>
+            <button
+              onClick={scanMedia}
+              disabled={scanning}
+              className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium disabled:opacity-40"
+            >
+              {scanning ? 'Scanning…' : 'Scan Media'}
+            </button>
             {user?.isAdmin && (
-              <>
-                <button
-                  onClick={scanMedia}
-                  disabled={scanning}
-                  className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium disabled:opacity-40"
-                >
-                  {scanning ? 'Scanning…' : 'Scan Media'}
-                </button>
-                <button
-                  onClick={() => navigate('/admin/telegram-users')}
-                  className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium"
-                >
-                  Telegram Users
-                </button>
-              </>
+              <button
+                onClick={() => navigate('/admin/telegram-users')}
+                className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium"
+              >
+                Users
+              </button>
             )}
           </nav>
         </div>
@@ -284,12 +282,10 @@ export default function HomePage() {
           <span className="material-symbols-outlined">favorite</span>
           <span className="text-[10px] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Favorites</span>
         </button>
-        {user?.isAdmin && (
-          <button onClick={scanMedia} disabled={scanning} className="flex flex-col items-center gap-1 text-[#adaaaa] disabled:opacity-40">
-            <span className="material-symbols-outlined">refresh</span>
-            <span className="text-[10px] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Scan</span>
-          </button>
-        )}
+        <button onClick={scanMedia} disabled={scanning} className="flex flex-col items-center gap-1 text-[#adaaaa] disabled:opacity-40">
+          <span className="material-symbols-outlined">refresh</span>
+          <span className="text-[10px] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Scan</span>
+        </button>
         <button onClick={logout} className="flex flex-col items-center gap-1 text-[#adaaaa] hover:text-[#ff9069] transition-colors">
           <span className="material-symbols-outlined">logout</span>
           <span className="text-[10px] uppercase tracking-widest" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Sign Out</span>
