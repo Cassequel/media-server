@@ -23,6 +23,7 @@ export default function HomePage() {
   const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
   const [pendingRequests, setPendingRequests] = useState([])
   const [usage, setUsage] = useState(null)
+  const [showHowTo, setShowHowTo] = useState(false)
   const intervalRef = useRef(null)
 
   useEffect(() => {
@@ -96,6 +97,12 @@ export default function HomePage() {
               className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium disabled:opacity-40"
             >
               {scanning ? 'Scanning…' : 'Scan Media'}
+            </button>
+            <button
+              onClick={() => setShowHowTo(true)}
+              className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors duration-300 font-medium"
+            >
+              How To Use
             </button>
             {user?.isAdmin && (
               <button
@@ -269,8 +276,14 @@ export default function HomePage() {
       </MediaRow>
 
       {requestModal && (
-        <RequestModal type={requestModal} onClose={() => setRequestModal(null)} />
+        <RequestModal
+          type={requestModal}
+          onClose={() => setRequestModal(null)}
+          onConfirmed={() => api.get('/request/pending').then(({ data }) => setPendingRequests(data)).catch(() => {})}
+        />
       )}
+
+      {showHowTo && <HowToModal onClose={() => setShowHowTo(false)} />}
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-around items-center h-20 bg-[#131313]/80 backdrop-blur-[24px] border-t border-white/5">
@@ -436,7 +449,7 @@ function RequestCard({ onClick }) {
   )
 }
 
-function RequestModal({ type, onClose }) {
+function RequestModal({ type, onClose, onConfirmed }) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState(null) // { title, mediaType, season }
@@ -466,6 +479,7 @@ function RequestModal({ type, onClose }) {
       const { data } = await api.post('/request/confirm', confirmation)
       setConfirmation(null)
       setResult({ ok: true, message: data.message })
+      onConfirmed()
     } catch (err) {
       setResult({ ok: false, message: err.response?.data?.message ?? 'Something went wrong.' })
     } finally {
@@ -570,6 +584,87 @@ function RequestModal({ type, onClose }) {
             </button>
           </form>
         )}
+      </div>
+    </div>
+  )
+}
+
+function HowToModal({ onClose }) {
+  const steps = [
+    {
+      icon: 'add_circle',
+      title: 'Make a Request',
+      body: 'Click the "Request" card at the start of the Movies or TV Shows row. Type in the title you want. For TV shows, include the season number (e.g. "Severance season 2") since only that specific season will be downloaded, not the whole show. Confirm your request and the Downloading card will appear in the row right away.',
+    },
+    {
+      icon: 'radar',
+      title: 'Scan Media',
+      body: 'Hit "Scan Media" in the nav bar periodically to check if your download has landed on the server. The page reloads each time it runs.',
+    },
+    {
+      icon: 'play_circle',
+      title: 'Keep Re-scanning',
+      body: 'Once the file is on the server, the Downloading card is replaced by the actual title and it is ready to watch.',
+    },
+  ]
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-[#1e100b] border border-white/10 rounded-2xl p-8 w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between mb-8">
+          <h2
+            className="text-2xl font-black uppercase tracking-tighter text-[#f9dcd4]"
+            style={{ fontFamily: 'Epilogue, sans-serif' }}
+          >
+            How To Use
+          </h2>
+          <button onClick={onClose} className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {steps.map((step, i) => (
+            <div key={i} className="flex gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#2b1c17] flex items-center justify-center">
+                <span
+                  className="material-symbols-outlined text-[#ff9069]"
+                  style={{ fontSize: '20px', fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
+                >
+                  {step.icon}
+                </span>
+              </div>
+              <div>
+                <p
+                  className="text-[10px] uppercase tracking-widest text-[#ffb59c] mb-1"
+                  style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+                >
+                  Step {i + 1}
+                </p>
+                <h3
+                  className="text-lg font-bold text-[#f9dcd4] mb-1"
+                  style={{ fontFamily: 'Epilogue, sans-serif' }}
+                >
+                  {step.title}
+                </h3>
+                <p className="text-[#e3bfb3] text-sm leading-relaxed" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                  {step.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-8 w-full py-3 rounded-full font-bold text-[#5c1900] hover:brightness-110 active:scale-95 transition-all text-sm"
+          style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
+        >
+          Got it
+        </button>
       </div>
     </div>
   )
