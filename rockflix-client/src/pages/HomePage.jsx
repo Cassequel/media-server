@@ -484,7 +484,7 @@ function RequestModal({ type, onClose }) {
             className="text-2xl font-black uppercase tracking-tighter text-[#f9dcd4]"
             style={{ fontFamily: 'Epilogue, sans-serif' }}
           >
-            Request {type === 'movie' ? 'a Movie' : 'a TV Show'}
+            Request {type === 'movie' ? 'a Movie' : 'a TV Show Season'}
           </h2>
           <button onClick={onClose} className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors">
             <span className="material-symbols-outlined">close</span>
@@ -556,7 +556,7 @@ function RequestModal({ type, onClose }) {
               type="text"
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder={type === 'movie' ? 'e.g. Dune Part Two' : 'e.g. latest season of Severance'}
+              placeholder={type === 'movie' ? 'e.g. Dune Part Two' : 'e.g. Severance season #'}
               className="w-full bg-[#2b1c17] border border-white/10 rounded-xl px-4 py-3 text-[#f9dcd4] placeholder-[#5b4138] focus:outline-none focus:border-[#ff9069] transition-colors mb-6 text-sm"
               style={{ fontFamily: 'Space Grotesk, sans-serif' }}
             />

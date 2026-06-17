@@ -8,14 +8,19 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ username: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pending, setPending] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await register(form.username, form.email, form.password)
-      navigate('/')
+      const data = await register(form.username, form.email, form.password)
+      if (data.pending) {
+        setPending(true)
+      } else {
+        navigate('/')
+      }
     } catch (err) {
       setError(err.response?.data?.message ?? 'Registration failed.')
     } finally {
@@ -67,6 +72,29 @@ export default function RegisterPage() {
         </div>
 
         <div className="w-full max-w-sm">
+          {pending ? (
+            <div className="text-center space-y-6">
+              <span className="material-symbols-outlined text-[#ffb59c]" style={{ fontSize: '64px' }}>hourglass_top</span>
+              <div>
+                <h2
+                  className="text-4xl font-bold tracking-tight mb-3"
+                  style={{ fontFamily: 'Epilogue, sans-serif' }}
+                >
+                  You're on the list
+                </h2>
+                <p className="text-[#e3bfb3] leading-relaxed">
+                  Your account is waiting for approval. You'll be able to sign in once an administrator activates it.
+                </p>
+              </div>
+              <Link
+                to="/login"
+                className="block text-[#ffb59c] text-sm font-bold hover:underline underline-offset-4"
+              >
+                Back to sign in
+              </Link>
+            </div>
+          ) : (
+          <>
           <header className="mb-8">
             <h2
               className="text-4xl font-bold tracking-tight mb-2"
@@ -166,6 +194,8 @@ export default function RegisterPage() {
               </p>
             </div>
           </form>
+          </>
+          )}
         </div>
 
         {/* Ornament */}

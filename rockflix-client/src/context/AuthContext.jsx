@@ -18,9 +18,12 @@ export function AuthProvider({ children }) {
 
   async function register(username, email, password) {
     const { data } = await api.post('/auth/register', { username, email, password })
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('user', JSON.stringify({ username: data.username, email: data.email, isAdmin: data.isAdmin }))
-    setUser({ username: data.username, email: data.email, isAdmin: data.isAdmin })
+    if (data.token) {
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify({ username: data.username, email: data.email, isAdmin: data.isAdmin }))
+      setUser({ username: data.username, email: data.email, isAdmin: data.isAdmin })
+    }
+    return data
   }
 
   function logout() {

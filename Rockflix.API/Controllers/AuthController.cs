@@ -27,11 +27,15 @@ public class AuthController(AppDbContext db, TokenService tokenService) : Contro
             Username = request.Username,
             Email = request.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            IsAdmin = isFirstUser // first registered user becomes admin
+            IsAdmin = isFirstUser,
+            IsActive = isFirstUser
         };
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
+
+        if (!isFirstUser)
+            return StatusCode(202, new { pending = true, message = "Your account is pending approval by an administrator." });
 
         return Ok(new AuthResponse
         {
@@ -48,6 +52,9 @@ public class AuthController(AppDbContext db, TokenService tokenService) : Contro
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             return Unauthorized(new { message = "Invalid email or password." });
+
+        if (!user.IsActive)
+            return StatusCode(403, new { message = "Your account is pending approval by an administrator." });
 
         return Ok(new AuthResponse
         {
