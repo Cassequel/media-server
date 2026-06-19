@@ -11,9 +11,9 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
     public async Task ScanAsync()
     {
-        await PruneDeletedAsync();
         await ScanMoviesAsync();
         await ScanTvShowsAsync();
+        await PruneDeletedAsync();
     }
 
     private async Task PruneDeletedAsync()
