@@ -18,17 +18,21 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
     private async Task PruneDeletedAsync()
     {
-        // Mark pending movie requests as completed if the movie is already in the library
+        // Mark pending movie requests as completed if the movie is already in the library.
+        // Prefer TMDB ID match (reliable) over title match (fragile).
         var pendingMovies = await db.MediaRequests
-            .Where(r => r.Status == "pending" && r.MediaType == "movie" && r.ResolvedTitle != null)
+            .Where(r => r.Status == "pending" && r.MediaType == "movie")
             .ToListAsync();
         foreach (var req in pendingMovies)
         {
-            var exists = await db.Movies.AnyAsync(m => EF.Functions.ILike(m.Title, req.ResolvedTitle!));
+            bool exists = req.ExternalId.HasValue
+                ? await db.Movies.AnyAsync(m => m.TmdbId == req.ExternalId)
+                : req.ResolvedTitle != null && await db.Movies.AnyAsync(m => EF.Functions.ILike(m.Title, req.ResolvedTitle));
             if (exists) req.Status = "completed";
         }
 
-        // Mark pending TV requests as completed if the show is already in the library
+        // Mark pending TV requests as completed if the show is already in the library.
+        // ExternalId for TV is tvdbId (not stored on TvShow), so fall back to title match.
         var pendingTv = await db.MediaRequests
             .Where(r => r.Status == "pending" && r.MediaType == "tv" && r.ResolvedTitle != null)
             .ToListAsync();
