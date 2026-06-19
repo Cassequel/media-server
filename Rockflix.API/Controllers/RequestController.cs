@@ -23,9 +23,11 @@ public class RequestController(MediaRequestService mediaRequestService, AppDbCon
 
         var lookup = await mediaRequestService.ParseAndLookupAsync(dto.Text);
         if (lookup is null)
-            return Ok(new { found = false });
+            return Ok(new { found = false, blocked = false });
+        if (lookup.Blocked)
+            return Ok(new { found = false, blocked = true });
 
-        return Ok(new { found = true, title = lookup.Title, mediaType = lookup.MediaType, season = lookup.Season, tmdbId = lookup.TmdbId, tvdbId = lookup.TvdbId });
+        return Ok(new { found = true, blocked = false, title = lookup.Title, mediaType = lookup.MediaType, season = lookup.Season, tmdbId = lookup.TmdbId, tvdbId = lookup.TvdbId });
     }
 
     [HttpPost("confirm")]

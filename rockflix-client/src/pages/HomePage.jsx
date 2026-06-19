@@ -461,7 +461,9 @@ function RequestModal({ type, onClose, onConfirmed }) {
     setLoading(true)
     try {
       const { data } = await api.post('/request/parse', { text: text.trim() })
-      if (!data.found) {
+      if (data.blocked) {
+        setResult({ ok: false, message: "Adult content, pornographic material, and NC-17 rated titles cannot be requested on this server. Please request something else." })
+      } else if (!data.found) {
         setResult({ ok: false, message: "Sorry, I couldn't understand that request. Try something like: 'Dune Part Two' or 'season 2 of Severance'." })
       } else {
         setConfirmation({ title: data.title, mediaType: data.mediaType, season: data.season, tmdbId: data.tmdbId, tvdbId: data.tvdbId })

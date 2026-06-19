@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Rockflix.API.Data;
 using Rockflix.API.Models;
 using Rockflix.API.Services;
+using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 
 namespace Rockflix.API.Controllers;
@@ -11,6 +12,9 @@ namespace Rockflix.API.Controllers;
 [Route("api/telegram")]
 public class TelegramController : ControllerBase
 {
+    // Keyed by chat ID; holds the parsed lookup waiting for user confirmation
+    private static readonly ConcurrentDictionary<long, MediaRequestService.ParsedLookup> _pendingConfirmations = new();
+
     private readonly MediaRequestService _mediaRequestService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
@@ -101,9 +105,6 @@ public class TelegramController : ControllerBase
 
     private async Task ProcessAndReplyAsync(long chatId, string text)
     {
-        MediaRequestService.MediaResult? requestResult = null;
-        bool success = false;
-
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -124,43 +125,80 @@ public class TelegramController : ControllerBase
                 }
             }
 
-            requestResult = await _mediaRequestService.ProcessRequestAsync(text);
-            success = requestResult.ExternalId.HasValue;
+            var lowerText = text.ToLowerInvariant();
 
-            db.TelegramRequests.Add(new TelegramRequest
+            // Handle confirmation responses
+            if (lowerText is "yes" or "y" or "confirm" or "yep" or "yeah")
             {
-                ChatId = chatId,
-                RequestText = text,
-                ResolvedTitle = requestResult.ResolvedTitle,
-                MediaType = string.IsNullOrEmpty(requestResult.MediaType) ? null : requestResult.MediaType,
-                Success = success,
-                RequestedAt = DateTime.UtcNow
-            });
-
-            // Also save MediaRequest for linked web user so size gets tracked
-            if (linkedUser is not null && requestResult.ExternalId.HasValue)
-            {
-                db.MediaRequests.Add(new MediaRequest
+                if (!_pendingConfirmations.TryRemove(chatId, out var pending))
                 {
-                    UserId = linkedUser.Id,
-                    RequestText = text,
-                    MediaType = requestResult.MediaType,
-                    ResolvedTitle = requestResult.ResolvedTitle,
-                    ExternalId = requestResult.ExternalId,
-                    Status = "pending"
+                    await SendMessageAsync(chatId, "No pending request to confirm. Just tell me what you want to watch!");
+                    return;
+                }
+
+                var result = await _mediaRequestService.ProcessConfirmedAsync(
+                    pending.Title, pending.MediaType, pending.Season, pending.TmdbId, pending.TvdbId);
+
+                db.TelegramRequests.Add(new TelegramRequest
+                {
+                    ChatId = chatId,
+                    RequestText = pending.Title,
+                    ResolvedTitle = result.ResolvedTitle,
+                    MediaType = string.IsNullOrEmpty(result.MediaType) ? null : result.MediaType,
+                    Success = result.ExternalId.HasValue,
+                    RequestedAt = DateTime.UtcNow
                 });
+
+                if (linkedUser is not null && result.ExternalId.HasValue)
+                {
+                    db.MediaRequests.Add(new MediaRequest
+                    {
+                        UserId = linkedUser.Id,
+                        RequestText = pending.Title,
+                        MediaType = result.MediaType,
+                        ResolvedTitle = result.ResolvedTitle,
+                        ExternalId = result.ExternalId,
+                        Status = "pending"
+                    });
+                }
+
+                await db.SaveChangesAsync();
+                await SendMessageAsync(chatId, result.Message);
+                return;
             }
 
-            await db.SaveChangesAsync();
+            // Handle cancellation responses
+            if (lowerText is "no" or "n" or "cancel" or "nope")
+            {
+                _pendingConfirmations.TryRemove(chatId, out _);
+                await SendMessageAsync(chatId, "Cancelled. What else would you like to watch?");
+                return;
+            }
+
+            // New request — parse and look up, then ask for confirmation
+            var lookup = await _mediaRequestService.ParseAndLookupAsync(text);
+
+            if (lookup is null)
+            {
+                await SendMessageAsync(chatId, "Sorry, I couldn't find that. Try something like: 'Dune Part Two' or 'season 2 of Severance'.");
+                return;
+            }
+
+            if (lookup.Blocked)
+            {
+                await SendMessageAsync(chatId, "Adult content, pornographic material, and NC-17 rated titles cannot be requested on this server.");
+                return;
+            }
+
+            _pendingConfirmations[chatId] = lookup;
+            var seasonMsg = lookup.Season.HasValue ? $" Season {lookup.Season}" : "";
+            await SendMessageAsync(chatId, $"I found: {lookup.Title}{seasonMsg}. Reply 'yes' to confirm or 'no' to cancel.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed processing request from {ChatId}", chatId);
             await SendMessageAsync(chatId, "Something went wrong processing your request. Try again.");
-            return;
         }
-
-        await SendMessageAsync(chatId, requestResult.Message);
     }
 
     private async Task SendMessageAsync(long chatId, string text)

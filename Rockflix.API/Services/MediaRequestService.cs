@@ -13,11 +13,15 @@ public class MediaRequestService
     private readonly ILogger<MediaRequestService> _logger;
 
     private static readonly string SystemPrompt = """
-        You are a media request parser. The user will send a natural language SMS requesting a movie or TV show.
+        You are a media request parser for a family-friendly media server. The user will send a natural language message requesting a movie or TV show.
         Extract their intent and return ONLY a JSON object — no prose, no markdown fences.
 
-        JSON schema:
+        IMPORTANT: If the request is for adult content, pornography, XXX material, NC-17 rated content, or anything sexually explicit,
+        you MUST return {"blocked":true} and nothing else.
+
+        JSON schema (for non-blocked requests):
         {
+          "blocked": false,
           "media_type": "movie" | "tv",
           "title": "the best guess at the canonical title",
           "year": null | integer (release year if mentioned or strongly implied),
@@ -26,9 +30,9 @@ public class MediaRequestService
         }
 
         Examples:
-        "that new Dune movie" -> {"media_type":"movie","title":"Dune: Part Two","year":2024,"season":null,"confidence":"high"}
-        "latest season of Severance" -> {"media_type":"tv","title":"Severance","year":null,"season":2,"confidence":"medium"}
-        "the bear" -> {"media_type":"tv","title":"The Bear","year":null,"season":null,"confidence":"high"}
+        "that new Dune movie" -> {"blocked":false,"media_type":"movie","title":"Dune: Part Two","year":2024,"season":null,"confidence":"high"}
+        "latest season of Severance" -> {"blocked":false,"media_type":"tv","title":"Severance","year":null,"season":2,"confidence":"medium"}
+        "the bear" -> {"blocked":false,"media_type":"tv","title":"The Bear","year":null,"season":null,"confidence":"high"}
         """;
 
     public MediaRequestService(IConfiguration config, IHttpClientFactory httpClientFactory, ILogger<MediaRequestService> logger)
@@ -44,6 +48,7 @@ public class MediaRequestService
         try
         {
             var parsed = await ParseWithClaudeAsync(requestText);
+            if (parsed.Blocked) return new ParsedLookup("", "", null, null, null, Blocked: true);
             if (parsed.Confidence == "low") return null;
 
             // Do the Radarr/Sonarr lookup now so we lock in the exact external ID
@@ -110,7 +115,7 @@ public class MediaRequestService
             }
             else if (mediaType == "tv" && tvdbId.HasValue)
             {
-                var parsed = new MediaParsed(mediaType, title, null, season, "high");
+                var parsed = new MediaParsed(Blocked: false, MediaType: mediaType, Title: title, Year: null, Season: season, Confidence: "high");
                 var (message, externalId) = await AddTvShowAsync(parsed);
                 return new MediaResult(message, mediaType, title, externalId);
             }
@@ -124,7 +129,7 @@ public class MediaRequestService
         }
     }
 
-    public record ParsedLookup(string Title, string MediaType, int? Season, int? TmdbId, int? TvdbId);
+    public record ParsedLookup(string Title, string MediaType, int? Season, int? TmdbId, int? TvdbId, bool Blocked = false);
 
     public async Task<MediaResult> ProcessRequestAsync(string requestText)
     {
@@ -284,11 +289,12 @@ public class MediaRequestService
     public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId);
 
     public record MediaParsed(
-        [property: JsonPropertyName("media_type")] string MediaType,
-        [property: JsonPropertyName("title")] string Title,
-        [property: JsonPropertyName("year")] int? Year,
-        [property: JsonPropertyName("season")] int? Season,
-        [property: JsonPropertyName("confidence")] string Confidence);
+        [property: JsonPropertyName("blocked")] bool Blocked = false,
+        [property: JsonPropertyName("media_type")] string MediaType = "",
+        [property: JsonPropertyName("title")] string Title = "",
+        [property: JsonPropertyName("year")] int? Year = null,
+        [property: JsonPropertyName("season")] int? Season = null,
+        [property: JsonPropertyName("confidence")] string Confidence = "low");
 
     private record RadarrMovie(
         [property: JsonPropertyName("tmdbId")] int TmdbId,
