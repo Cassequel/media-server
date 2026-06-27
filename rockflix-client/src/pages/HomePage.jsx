@@ -159,7 +159,7 @@ export default function HomePage() {
             <img
               src={hero.backdropPath ?? hero.posterPath}
               alt={hero.title}
-              className="w-full h-full object-cover opacity-60 transition-opacity duration-1000"
+              className="w-full h-full object-cover object-top opacity-60 transition-opacity duration-1000"
             />
             <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 20%, #1e100b 100%)' }} />
             <div className="absolute inset-0 hidden md:block" style={{ background: 'linear-gradient(to right, #1e100b 0%, transparent 60%)' }} />
