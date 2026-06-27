@@ -27,7 +27,9 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         {
             bool exists = req.ExternalId.HasValue
                 ? await db.Movies.AnyAsync(m => m.TmdbId == req.ExternalId)
-                : req.ResolvedTitle != null && await db.Movies.AnyAsync(m => EF.Functions.ILike(m.Title, req.ResolvedTitle));
+                : req.ResolvedTitle != null && await db.Movies.AnyAsync(m =>
+                    EF.Functions.ILike(m.Title, "%" + req.ResolvedTitle + "%") ||
+                    EF.Functions.ILike(req.ResolvedTitle, "%" + m.Title + "%"));
             if (exists) req.Status = "completed";
         }
 
@@ -38,7 +40,9 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
             .ToListAsync();
         foreach (var req in pendingTv)
         {
-            var exists = await db.TvShows.AnyAsync(s => EF.Functions.ILike(s.Title, req.ResolvedTitle!));
+            var exists = await db.TvShows.AnyAsync(s =>
+                EF.Functions.ILike(s.Title, "%" + req.ResolvedTitle + "%") ||
+                EF.Functions.ILike(req.ResolvedTitle, "%" + s.Title + "%"));
             if (exists) req.Status = "completed";
         }
 

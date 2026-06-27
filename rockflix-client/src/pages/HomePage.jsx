@@ -155,7 +155,7 @@ export default function HomePage() {
       {/* Hero */}
       {hero && (
         <section className="relative h-[80vh] min-h-[500px] w-full overflow-hidden pt-16">
-          <div className="absolute inset-0 z-0">
+          <div className="absolute inset-x-0 bottom-0 top-16 z-0">
             <img
               src={hero.backdropPath ?? hero.posterPath}
               alt={hero.title}
