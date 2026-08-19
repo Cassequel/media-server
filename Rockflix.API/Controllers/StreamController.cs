@@ -2,13 +2,14 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Rockflix.API.Data;
+using Rockflix.API.Services;
 
 namespace Rockflix.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class StreamController(AppDbContext db) : ControllerBase
+public class StreamController(AppDbContext db, StreamCacheService cache) : ControllerBase
 {
     [HttpGet("movie/{id}")]
     public async Task<IActionResult> StreamMovie(int id)
@@ -40,17 +41,22 @@ public class StreamController(AppDbContext db) : ControllerBase
         var videoCompatible = videoCodec != null && BrowserCompatibleVideoCodecs.Contains(videoCodec);
         var audioCompatible = audioCodec != null && BrowserCompatibleAudioCodecs.Contains(audioCodec);
 
-        var ext = Path.GetExtension(filePath).ToLowerInvariant();
-        var containerCompatible = ext == ".mp4" || ext == ".m4v";
+        if (videoCompatible && audioCompatible)
+        {
+            // Codecs are already phone-compatible. If the container is already a real MP4 it's
+            // seekable as-is; otherwise (e.g. H.264/AAC inside an MKV) remux it once into a
+            // cached MP4 on disk so range requests/seeking work no matter the source container.
+            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+            var seekablePath = ext == ".mp4" || ext == ".m4v"
+                ? filePath
+                : await cache.GetOrCreateRemuxAsync(filePath, HttpContext.RequestAborted);
 
-        // Already a phone-compatible MP4 (H.264 + AAC): serve the bytes directly so range
-        // requests/seeking work and we don't spend CPU re-encoding for nothing.
-        if (videoCompatible && audioCompatible && containerCompatible)
-            return PhysicalFile(filePath, "video/mp4", enableRangeProcessing: true);
+            return PhysicalFile(seekablePath, "video/mp4", enableRangeProcessing: true);
+        }
 
-        // Otherwise remux via FFmpeg, copying whichever stream is already compatible and
-        // re-encoding whichever isn't (e.g. HEVC video or DTS/EAC3/TrueHD audio) so phone
-        // browsers - which generally only decode H.264/AAC inline - can actually play it.
+        // At least one stream isn't phone-compatible (e.g. HEVC video or DTS/EAC3/TrueHD audio):
+        // re-encode live via FFmpeg, copying whichever stream is already fine. This can be played
+        // but not scrubbed, since it's a single continuous stream with no seek support.
         Response.ContentType = "video/mp4";
         Response.Headers.Append("Cache-Control", "no-cache");
 
