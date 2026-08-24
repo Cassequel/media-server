@@ -13,7 +13,10 @@ namespace Rockflix.API.Services;
 /// </summary>
 public class StreamCacheService
 {
+    private const long DefaultMaxCacheBytes = 20L * 1024 * 1024 * 1024; // 20 GiB
+
     private readonly string _cacheRoot;
+    private readonly long _maxCacheBytes;
     private readonly ILogger<StreamCacheService> _logger;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
@@ -21,6 +24,7 @@ public class StreamCacheService
     {
         var mediaRoot = config["Media:RootPath"]!;
         _cacheRoot = config["Media:CachePath"] ?? Path.Combine(mediaRoot, ".stream-cache");
+        _maxCacheBytes = config.GetValue<long?>("Media:CacheMaxBytes") ?? DefaultMaxCacheBytes;
         Directory.CreateDirectory(_cacheRoot);
         _logger = logger;
     }
@@ -29,7 +33,10 @@ public class StreamCacheService
     {
         var cachePath = GetCachePath(sourcePath);
         if (IsCacheValid(sourcePath, cachePath))
+        {
+            Touch(cachePath);
             return cachePath;
+        }
 
         var gate = _locks.GetOrAdd(cachePath, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
@@ -37,7 +44,10 @@ public class StreamCacheService
         {
             // Another request may have finished the remux while we were waiting on the gate.
             if (IsCacheValid(sourcePath, cachePath))
+            {
+                Touch(cachePath);
                 return cachePath;
+            }
 
             var tmpPath = cachePath + ".tmp";
             var psi = new ProcessStartInfo
@@ -65,12 +75,52 @@ public class StreamCacheService
             }
 
             File.Move(tmpPath, cachePath, overwrite: true);
+            Touch(cachePath);
+            EvictLeastRecentlyUsed(keep: cachePath);
             return cachePath;
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    // Keeps the cache directory under the configured size cap by deleting the least-recently-
+    // played cached files first. Runs after every new remux, since that's the only way the cache
+    // grows. Deleting a file that's mid-stream to some other viewer is safe on Linux - the open
+    // file handle keeps working until they finish, it just won't be reused after that.
+    private void EvictLeastRecentlyUsed(string keep)
+    {
+        try
+        {
+            var files = new DirectoryInfo(_cacheRoot).EnumerateFiles("*.mp4").OrderBy(f => f.LastAccessTimeUtc).ToList();
+            var total = files.Sum(f => f.Length);
+
+            foreach (var file in files)
+            {
+                if (total <= _maxCacheBytes) break;
+                if (file.FullName == keep) continue;
+                total -= file.Length;
+                try
+                {
+                    file.Delete();
+                    _logger.LogInformation("Evicted cached remux {File} to stay under the cache size limit", file.Name);
+                }
+                catch (IOException ex)
+                {
+                    _logger.LogWarning(ex, "Could not evict {File}, will retry next time", file.Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cache eviction pass failed");
+        }
+    }
+
+    private static void Touch(string path)
+    {
+        try { File.SetLastAccessTimeUtc(path, DateTime.UtcNow); } catch { /* best-effort LRU bookkeeping */ }
     }
 
     private string GetCachePath(string sourcePath)
