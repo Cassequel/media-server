@@ -16,4 +16,5 @@ public class Movie
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<WatchHistory> WatchHistory { get; set; } = [];
+    public ICollection<MovieVersion> Versions { get; set; } = [];
 }

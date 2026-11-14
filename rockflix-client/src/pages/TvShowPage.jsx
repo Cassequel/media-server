@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import CreditsPanel from '../components/CreditsPanel'
 
 export default function TvShowPage() {
   const { id } = useParams()
@@ -9,7 +10,9 @@ export default function TvShowPage() {
   const [episodes, setEpisodes] = useState([])
   const [favorited, setFavorited] = useState(false)
   const [selectedSeason, setSelectedSeason] = useState(1)
+  const [tvTab, setTvTab] = useState('episodes') // 'episodes' | 'credits'
   const [loading, setLoading] = useState(true)
+  const [preparing, setPreparing] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -20,7 +23,8 @@ export default function TvShowPage() {
       setShow(s)
       setEpisodes(eps)
       setFavorited(f.favorited)
-      if (eps.length > 0) setSelectedSeason(eps[0].seasonNumber)
+       if (eps.length > 0) setSelectedSeason(eps[0].seasonNumber)
+      api.post(`/tvshows/${id}/prepare`).then(({ data }) => setPreparing(`${data.queued} episodes queued for offline-ready playback`)).catch(() => {})
     }).finally(() => setLoading(false))
   }, [id])
 
@@ -110,6 +114,12 @@ export default function TvShowPage() {
               <p className="text-[#e3bfb3] max-w-2xl mb-6 leading-relaxed line-clamp-3">{show.description}</p>
             )}
 
+            {preparing && (
+              <p className="text-[#ffb59c] text-sm mb-5" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                Preparing season: {preparing}
+              </p>
+            )}
+
             <button
               onClick={toggleFavorite}
               className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-all active:scale-95 ${
@@ -131,6 +141,35 @@ export default function TvShowPage() {
         </div>
       </div>
 
+      {/* Content tabs */}
+      <div className="px-8 md:px-12 mb-4 max-w-[1200px] mx-auto">
+        <div className="flex gap-1 border-b border-[#5b4138]">
+          {[
+            { key: 'episodes', label: 'Episodes' },
+            ...(show.tmdbId != null ? [{ key: 'credits', label: 'Cast & Crew' }] : []),
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTvTab(t.key)}
+              className={`px-5 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all ${
+                tvTab === t.key
+                  ? 'border-[#ffb59c] text-[#ffb59c]'
+                  : 'border-transparent text-[#e3bfb3] hover:text-[#f9dcd4]'
+              }`}
+              style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tvTab === 'credits' ? (
+        <div className="px-8 md:px-12 pb-16 max-w-[1200px] mx-auto">
+          <CreditsPanel endpoint={`/tvshows/${id}/credits`} />
+        </div>
+      ) : (
+        <>
       {/* Season tabs */}
       <div className="px-8 md:px-12 mb-6 max-w-[1200px] mx-auto">
         <div className="flex gap-1 border-b border-[#5b4138]">
@@ -208,6 +247,8 @@ export default function TvShowPage() {
           )
         })}
       </div>
+        </>
+      )}
     </div>
   )
 }

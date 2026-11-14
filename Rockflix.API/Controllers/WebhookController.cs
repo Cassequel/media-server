@@ -6,16 +6,22 @@ namespace Rockflix.API.Controllers;
 
 [ApiController]
 [Route("api/webhooks")]
-public class WebhookController(AppDbContext db, ILogger<WebhookController> logger) : ControllerBase
+public class WebhookController(AppDbContext db, ILogger<WebhookController> logger, IConfiguration config) : ControllerBase
 {
     [HttpPost("radarr")]
     public async Task<IActionResult> Radarr([FromBody] RadarrEvent evt)
     {
+        if (config.GetValue<bool>("Filtering:Enabled"))
+        {
+            var expected = config["Filtering:WebhookSecret"];
+            if (string.IsNullOrEmpty(expected) || Request.Headers["X-Rockflix-Webhook-Key"].ToString() != expected) return Unauthorized();
+            // Worker reconciles authoritative imported paths from Radarr. The event cannot publish or complete a filtered job.
+        }
         if (evt.EventType != "Download" || evt.Movie is null || evt.MovieFile is null)
             return Ok();
 
         var request = await db.MediaRequests
-            .Where(r => r.MediaType == "movie" && r.ExternalId == evt.Movie.TmdbId && r.Status == "pending")
+            .Where(r => r.MediaType == "movie" && r.ExternalId == evt.Movie.TmdbId && r.Status == "pending" && r.FilterJobId == null)
             .OrderByDescending(r => r.RequestedAt)
             .FirstOrDefaultAsync();
 

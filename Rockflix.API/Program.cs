@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Rockflix.API.Data;
 using Rockflix.API.Services;
+using Rockflix.API.Services.Filtering;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +51,18 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<MediaScannerService>();
 builder.Services.AddSingleton<MediaRequestService>();
 builder.Services.AddSingleton<StreamCacheService>();
+builder.Services.AddSingleton<DoesTheDogDieService>();
+builder.Services.AddSingleton<CleanStreamService>();
+builder.Services.AddSingleton<MovieTimestampService>();
+builder.Services.AddHttpClient("cleanstream", client => client.MaxResponseContentBufferSize = 2 * 1024 * 1024)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("timestamp-identity").RemoveAllLoggers()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<FilterRequestService>();
+builder.Services.AddScoped<RadarrAcquisition>();
+builder.Services.AddSingleton<MediaProcessor>();
+builder.Services.AddHostedService<MovieFilterWorker>();
+builder.Services.AddHttpClient("doesthedogdie").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 
 // Named HTTP clients for Radarr and Sonarr
 builder.Services.AddHttpClient("radarr", client =>

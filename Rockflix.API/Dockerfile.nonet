@@ -1,0 +1,17 @@
+# Temporary build file: reuses the existing rockflix-api image (which already has
+# ffmpeg installed) as the runtime base, so we can ship code changes without the
+# apt-get layer that needs network. Use Dockerfile (not this) once network is back.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /app
+
+COPY *.csproj ./
+RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore
+
+COPY . ./
+RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish -c Release -o out
+
+FROM rockflix-api:latest
+WORKDIR /app
+COPY --from=build /app/out .
+
+ENTRYPOINT ["dotnet", "Rockflix.API.dll"]

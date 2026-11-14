@@ -2,14 +2,14 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Rockflix.API.Services.Filtering;
 
 namespace Rockflix.API.Services;
 
 /// <summary>
-/// Guarantees a seekable MP4 on disk for source files whose video/audio codecs are already
-/// browser-compatible but whose container isn't (e.g. H.264/AAC inside an MKV). The source is
-/// remuxed (stream-copied, no re-encoding) into a cached MP4 the first time it's requested, so
-/// later requests - and everyone else watching the same file - get instant, scrubbable playback.
+/// Guarantees a seekable, browser-compatible MP4 on disk. Sources which are already H.264/AAC
+/// are remuxed; other sources are transcoded once. Later requests - and everyone else watching
+/// the same file - get instant, scrubbable playback with HTTP range requests.
 /// </summary>
 public class StreamCacheService
 {
@@ -17,19 +17,23 @@ public class StreamCacheService
 
     private readonly string _cacheRoot;
     private readonly long _maxCacheBytes;
+    private readonly long _freeSpaceFloorBytes;
     private readonly ILogger<StreamCacheService> _logger;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    // One encoder prevents several first-play requests from exhausting the host.
+    private readonly SemaphoreSlim _conversionGate = MediaEncodingGate.Semaphore;
 
     public StreamCacheService(IConfiguration config, ILogger<StreamCacheService> logger)
     {
         var mediaRoot = config["Media:RootPath"]!;
         _cacheRoot = config["Media:CachePath"] ?? Path.Combine(mediaRoot, ".stream-cache");
         _maxCacheBytes = config.GetValue<long?>("Media:CacheMaxBytes") ?? DefaultMaxCacheBytes;
+        _freeSpaceFloorBytes = config.GetValue<long?>("Media:FreeSpaceFloorBytes") ?? 2L * 1024 * 1024 * 1024;
         Directory.CreateDirectory(_cacheRoot);
         _logger = logger;
     }
 
-    public async Task<string> GetOrCreateRemuxAsync(string sourcePath, CancellationToken ct)
+    public async Task<string> GetOrCreateSeekableMp4Async(string sourcePath, bool copyVideo, bool copyAudio)
     {
         var cachePath = GetCachePath(sourcePath);
         if (IsCacheValid(sourcePath, cachePath))
@@ -39,10 +43,11 @@ public class StreamCacheService
         }
 
         var gate = _locks.GetOrAdd(cachePath, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
+        await _conversionGate.WaitAsync();
+        await gate.WaitAsync();
         try
         {
-            // Another request may have finished the remux while we were waiting on the gate.
+            // Another request may have finished the conversion while we were waiting on the gate.
             if (IsCacheValid(sourcePath, cachePath))
             {
                 Touch(cachePath);
@@ -50,14 +55,23 @@ public class StreamCacheService
             }
 
             var tmpPath = cachePath + ".tmp";
+            long reservation = new FileInfo(sourcePath).Length * (copyVideo ? 2 : 3);
+            if (reservation > _maxCacheBytes) throw new InvalidOperationException("This conversion exceeds the playback cache budget.");
+            EvictLeastRecentlyUsed(keep: cachePath, reservedBytes: reservation);
+            if (new DriveInfo(_cacheRoot).AvailableFreeSpace < reservation + _freeSpaceFloorBytes)
+                throw new InvalidOperationException("Not enough free disk space for playback conversion.");
+            var videoArgs = copyVideo ? "-c:v copy" : "-c:v libx264 -preset veryfast -crf 20";
+            var audioArgs = copyAudio ? "-c:a copy" : "-c:a aac";
             var psi = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
-                Arguments = $"-y -i \"{sourcePath}\" -c:v copy -c:a copy -movflags faststart -f mp4 \"{tmpPath}\"",
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var arg in new[] { "-nostdin", "-v", "error", "-y", "-i", sourcePath }) psi.ArgumentList.Add(arg);
+            foreach (var arg in (videoArgs + " " + audioArgs).Split(' ', StringSplitOptions.RemoveEmptyEntries)) psi.ArgumentList.Add(arg);
+            foreach (var arg in new[] { "-movflags", "+faststart", "-f", "mp4", tmpPath }) psi.ArgumentList.Add(arg);
 
             using var process = Process.Start(psi)!;
             // Run the remux to completion even if this particular request aborts (e.g. the
@@ -70,8 +84,8 @@ public class StreamCacheService
             if (process.ExitCode != 0 || !File.Exists(tmpPath))
             {
                 if (File.Exists(tmpPath)) File.Delete(tmpPath);
-                _logger.LogError("Remux failed for {Source}: {Stderr}", sourcePath, stderr);
-                throw new InvalidOperationException($"Failed to remux '{sourcePath}' for seekable playback");
+                _logger.LogError("Seekable conversion failed for {Source}: {Stderr}", sourcePath, stderr);
+                throw new InvalidOperationException($"Failed to convert '{sourcePath}' for seekable playback");
             }
 
             File.Move(tmpPath, cachePath, overwrite: true);
@@ -82,6 +96,7 @@ public class StreamCacheService
         finally
         {
             gate.Release();
+            _conversionGate.Release();
         }
     }
 
@@ -89,7 +104,7 @@ public class StreamCacheService
     // played cached files first. Runs after every new remux, since that's the only way the cache
     // grows. Deleting a file that's mid-stream to some other viewer is safe on Linux - the open
     // file handle keeps working until they finish, it just won't be reused after that.
-    private void EvictLeastRecentlyUsed(string keep)
+    private void EvictLeastRecentlyUsed(string keep, long reservedBytes = 0)
     {
         try
         {
@@ -98,7 +113,7 @@ public class StreamCacheService
 
             foreach (var file in files)
             {
-                if (total <= _maxCacheBytes) break;
+                if (total <= _maxCacheBytes - reservedBytes) break;
                 if (file.FullName == keep) continue;
                 total -= file.Length;
                 try

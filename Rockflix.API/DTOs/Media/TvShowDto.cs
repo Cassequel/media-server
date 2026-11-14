@@ -9,6 +9,7 @@ public class TvShowDto
     public string? PosterPath { get; set; }
     public string? BackdropPath { get; set; }
     public double? TmdbRating { get; set; }
+    public int? TmdbId { get; set; }
     public string? Genre { get; set; }
     public int EpisodeCount { get; set; }
     public int SeasonCount { get; set; }

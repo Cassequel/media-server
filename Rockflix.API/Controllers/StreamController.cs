@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Rockflix.API.Data;
 using Rockflix.API.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace Rockflix.API.Controllers;
 
@@ -12,13 +13,15 @@ namespace Rockflix.API.Controllers;
 public class StreamController(AppDbContext db, StreamCacheService cache) : ControllerBase
 {
     [HttpGet("movie/{id}")]
-    public async Task<IActionResult> StreamMovie(int id)
+    public async Task<IActionResult> StreamMovie(int id, [FromQuery] int? versionId)
     {
-        var movie = await db.Movies.FindAsync(id);
-        if (movie == null || !System.IO.File.Exists(movie.FilePath))
+        var versions = db.MovieVersions.Where(v => v.MovieId == id);
+        var version = versionId.HasValue ? await versions.FirstOrDefaultAsync(v => v.Id == versionId)
+            : await versions.OrderBy(v => v.RemoveSex || v.MuteLanguage).ThenBy(v => v.Id).FirstOrDefaultAsync();
+        if (version == null || !System.IO.File.Exists(version.FilePath))
             return NotFound();
 
-        return await StreamFile(movie.FilePath);
+        return await StreamFile(version.FilePath);
     }
 
     [HttpGet("episode/{id}")]
@@ -41,42 +44,16 @@ public class StreamController(AppDbContext db, StreamCacheService cache) : Contr
         var videoCompatible = videoCodec != null && BrowserCompatibleVideoCodecs.Contains(videoCodec);
         var audioCompatible = audioCodec != null && BrowserCompatibleAudioCodecs.Contains(audioCodec);
 
-        if (videoCompatible && audioCompatible)
-        {
-            // Codecs are already phone-compatible. If the container is already a real MP4 it's
-            // seekable as-is; otherwise (e.g. H.264/AAC inside an MKV) remux it once into a
-            // cached MP4 on disk so range requests/seeking work no matter the source container.
-            var ext = Path.GetExtension(filePath).ToLowerInvariant();
-            var seekablePath = ext == ".mp4" || ext == ".m4v"
-                ? filePath
-                : await cache.GetOrCreateRemuxAsync(filePath, HttpContext.RequestAborted);
+        // A live FFmpeg pipe cannot answer HTTP Range requests, so native browser controls cannot
+        // seek it. Materialize incompatible sources into the cache once, then always expose a
+        // complete MP4 with range processing. This also prevents a new full transcode on every
+        // retry or reload.
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        var seekablePath = videoCompatible && audioCompatible && (ext == ".mp4" || ext == ".m4v")
+            ? filePath
+            : await cache.GetOrCreateSeekableMp4Async(filePath, videoCompatible, audioCompatible);
 
-            return PhysicalFile(seekablePath, "video/mp4", enableRangeProcessing: true);
-        }
-
-        // At least one stream isn't phone-compatible (e.g. HEVC video or DTS/EAC3/TrueHD audio):
-        // re-encode live via FFmpeg, copying whichever stream is already fine. This can be played
-        // but not scrubbed, since it's a single continuous stream with no seek support.
-        Response.ContentType = "video/mp4";
-        Response.Headers.Append("Cache-Control", "no-cache");
-
-        var videoArgs = videoCompatible ? "-c:v copy" : "-c:v libx264 -preset veryfast -crf 20";
-        var audioArgs = audioCompatible ? "-c:a copy" : "-c:a aac";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = "ffmpeg",
-            Arguments = $"-i \"{filePath}\" {videoArgs} {audioArgs} -movflags frag_keyframe+empty_moov+faststart -f mp4 pipe:1",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        var process = Process.Start(psi)!;
-        HttpContext.RequestAborted.Register(() => { try { process.Kill(); } catch { } });
-
-        return new FileStreamResult(process.StandardOutput.BaseStream, "video/mp4");
+        return PhysicalFile(seekablePath, "video/mp4", enableRangeProcessing: true);
     }
 
     private static async Task<string?> ProbeCodecAsync(string filePath, string streamSelector)

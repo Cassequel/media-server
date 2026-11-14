@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import MovieFilterConfirmation from '../components/MovieFilterConfirmation'
+import MovieFilterJobs from '../components/MovieFilterJobs'
 
 
 function formatBytes(bytes) {
@@ -20,7 +22,11 @@ export default function HomePage() {
   const [movies, setMovies] = useState([])
   const [tvShows, setTvShows] = useState([])
   const [scanning, setScanning] = useState(false)
-  const [requestModal, setRequestModal] = useState(null) // 'movie' | 'tv' | null
+  const [requestModal, setRequestModal] = useState(null) // { type, text } | null
+  const [requestText, setRequestText] = useState('')
+  const [requestType, setRequestType] = useState('movie') // 'movie' | 'tv'
+  const [requestError, setRequestError] = useState(null)
+  const [activeTab, setActiveTab] = useState('browse') // 'browse' | 'continue'
   const [pendingRequests, setPendingRequests] = useState([])
   const [usage, setUsage] = useState(null)
   const [showHowTo, setShowHowTo] = useState(false)
@@ -74,6 +80,15 @@ export default function HomePage() {
     clearInterval(intervalRef.current)
     setHeroIndex(i)
     setHero(heroList[i])
+  }
+
+  async function removePendingRequest(id) {
+    try {
+      await api.delete(`/request/${id}`)
+      setPendingRequests(requests => requests.filter(request => request.id !== id))
+    } catch {
+      setRequestError('Could not remove that download card. Please try again.')
+    }
   }
 
   return (
@@ -244,41 +259,133 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Continue Watching */}
-      {continueWatching.length > 0 && (
-        <MediaRow title="Continue Watching">
-          {continueWatching.map((item, i) => (
-            <ContinueCard key={i} item={item} navigate={navigate} />
-          ))}
-        </MediaRow>
+      {/* Request selector + bar */}
+      <div className="max-w-2xl mx-auto w-full px-6 mt-4 mb-2">
+        <div className="flex justify-center mb-3">
+          <div className="inline-flex rounded-full bg-[#2b1c17] border border-white/10 p-1">
+            {[
+              { key: 'movie', label: 'Movie' },
+              { key: 'tv', label: 'TV Show' },
+            ].map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => { setRequestType(opt.key); setRequestError(null) }}
+                className={`px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-colors ${
+                  requestType === opt.key ? 'text-[#5c1900]' : 'text-[#e3bfb3] hover:text-[#f9dcd4]'
+                }`}
+                style={requestType === opt.key
+                  ? { fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }
+                  : { fontFamily: 'Epilogue, sans-serif' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const t = requestText.trim()
+            if (!t) return
+            if (requestType === 'tv' && !/(season\s*\d{1,2})|(\bs\d{1,2}\b)|(\b\d{1,2}\s*x\s*\d{1,2}\b)/i.test(t)) {
+              setRequestError('Include which season you want — e.g. "Severance season 2". Only that season gets downloaded.')
+              return
+            }
+            setRequestError(null)
+            setRequestModal({ type: requestType, text: t })
+          }}
+          className="flex items-center gap-3 bg-[#2b1c17] border border-white/10 rounded-full pl-5 pr-2 py-2 shadow-lg focus-within:border-[#ff9069] transition-colors"
+        >
+          <span className="material-symbols-outlined text-[#ff9069]">add_circle</span>
+          <input
+            type="text"
+            value={requestText}
+            onChange={(e) => { setRequestText(e.target.value); if (requestError) setRequestError(null) }}
+            placeholder={requestType === 'tv' ? 'e.g. Severance season 2 — include the season' : 'e.g. Dune Part Two'}
+            className="flex-1 bg-transparent text-[#f9dcd4] placeholder-[#5b4138] focus:outline-none text-sm py-1.5"
+            style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+          />
+          <button
+            type="submit"
+            disabled={!requestText.trim()}
+            className="px-5 py-2 rounded-full font-bold text-xs text-[#5c1900] hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 uppercase tracking-wide"
+            style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
+          >
+            Request
+          </button>
+        </form>
+
+        {requestError ? (
+          <p className="text-xs text-[#ffb4ab] mt-2 px-2 text-center" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            {requestError}
+          </p>
+        ) : requestType === 'tv' ? (
+          <p className="text-xs text-[#aa897f] mt-2 px-2 text-center" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            TV requests must include a season number — only that season is downloaded.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Tabs */}
+      <div className="px-8 md:px-12 mt-4 flex gap-1 border-b border-[#5b4138]/30">
+        {[
+          { key: 'browse', label: 'Browse' },
+          { key: 'continue', label: 'Continue Watching' },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-5 py-3 font-bold text-sm uppercase tracking-wide transition-colors border-b-2 -mb-px ${
+              activeTab === tab.key
+                ? 'text-[#ff9069] border-[#ff9069]'
+                : 'text-[#e3bfb3] border-transparent hover:text-[#f9dcd4]'
+            }`}
+            style={{ fontFamily: 'Epilogue, sans-serif' }}
+          >
+            {tab.label}
+            {tab.key === 'continue' && continueWatching.length > 0 && (
+              <span className="ml-2 text-[10px] bg-[#ff9069]/20 text-[#ffb59c] px-1.5 py-0.5 rounded-full align-middle">
+                {continueWatching.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'browse' ? (
+        <>
+          <MovieFilterJobs />
+          {/* Movies */}
+          <MediaSection title="Movies">
+            {pendingRequests.filter(r => r.mediaType === 'movie').map(r => (
+              <DownloadingCard key={r.id} title={r.resolvedTitle} onRemove={() => removePendingRequest(r.id)} />
+            ))}
+            {movies.map(movie => (
+              <PosterCard key={movie.id} item={movie} onClick={() => navigate(`/movie/${movie.id}`)} />
+            ))}
+          </MediaSection>
+
+          {/* TV Shows */}
+          <MediaSection title="TV Shows">
+            {pendingRequests.filter(r => r.mediaType === 'tv').map(r => (
+              <DownloadingCard key={r.id} title={r.resolvedTitle} onRemove={() => removePendingRequest(r.id)} />
+            ))}
+            {tvShows.map(show => (
+              <PosterCard key={show.id} item={show} onClick={() => navigate(`/tvshow/${show.id}`)} />
+            ))}
+          </MediaSection>
+        </>
+      ) : (
+        <ContinueWatchingGrid items={continueWatching} navigate={navigate} />
       )}
-
-      {/* Movies */}
-      <MediaRow title="Movies">
-        <RequestCard onClick={() => setRequestModal('movie')} />
-        {pendingRequests.filter(r => r.mediaType === 'movie').map(r => (
-          <DownloadingCard key={r.id} title={r.resolvedTitle} />
-        ))}
-        {movies.map(movie => (
-          <PosterCard key={movie.id} item={movie} onClick={() => navigate(`/movie/${movie.id}`)} />
-        ))}
-      </MediaRow>
-
-      {/* TV Shows */}
-      <MediaRow title="TV Shows">
-        <RequestCard onClick={() => setRequestModal('tv')} />
-        {pendingRequests.filter(r => r.mediaType === 'tv').map(r => (
-          <DownloadingCard key={r.id} title={r.resolvedTitle} />
-        ))}
-        {tvShows.map(show => (
-          <PosterCard key={show.id} item={show} onClick={() => navigate(`/tvshow/${show.id}`)} />
-        ))}
-      </MediaRow>
 
       {requestModal && (
         <RequestModal
-          type={requestModal}
-          onClose={() => setRequestModal(null)}
+          type={requestModal.type}
+          initialText={requestModal.text}
+          onClose={() => { setRequestModal(null); setRequestText(''); setRequestError(null) }}
           onConfirmed={() => api.get('/request/pending').then(({ data }) => setPendingRequests(data)).catch(() => {})}
         />
       )}
@@ -308,7 +415,7 @@ export default function HomePage() {
   )
 }
 
-function MediaRow({ title, children }) {
+function MediaSection({ title, children }) {
   return (
     <div className="px-8 md:px-12 pt-8 pb-2">
       <h2
@@ -317,7 +424,7 @@ function MediaRow({ title, children }) {
       >
         {title}
       </h2>
-      <div className="flex gap-5 overflow-x-auto pb-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#5b4138 transparent' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-5 gap-y-8">
         {children}
       </div>
     </div>
@@ -326,7 +433,7 @@ function MediaRow({ title, children }) {
 
 function PosterCard({ item, onClick }) {
   return (
-    <button onClick={onClick} className="flex-shrink-0 w-40 text-left group cursor-pointer">
+    <button onClick={onClick} className="w-full text-left group cursor-pointer">
       <div className="aspect-[2/3] rounded-xl overflow-hidden mb-3 relative bg-[#2b1c17]">
         {item.posterPath && (
           <img
@@ -355,7 +462,7 @@ function PosterCard({ item, onClick }) {
         )}
       </div>
       <h3
-        className="font-bold text-[#f9dcd4] group-hover:text-[#ffb59c] transition-colors truncate"
+        className="font-bold text-base text-[#f9dcd4] group-hover:text-[#ffb59c] transition-colors truncate"
         style={{ fontFamily: 'Epilogue, sans-serif' }}
       >
         {item.title}
@@ -367,51 +474,85 @@ function PosterCard({ item, onClick }) {
   )
 }
 
-function ContinueCard({ item, navigate }) {
-  const percent = item.runtimeSeconds ? Math.min((item.progressSeconds / item.runtimeSeconds) * 100, 100) : 0
-  const path = item.type === 'movie' ? `/watch/movie/${item.movieId}` : `/watch/episode/${item.episodeId}`
+function ContinueWatchingGrid({ items, navigate }) {
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <span className="material-symbols-outlined text-[#42312b] text-6xl">history</span>
+        <p className="text-[#aa897f] text-sm text-center" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          Nothing in progress. Start watching something and it&apos;ll show up here.
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <button onClick={() => navigate(path)} className="flex-shrink-0 w-56 text-left group cursor-pointer">
-      <div className="relative w-full aspect-video rounded-xl overflow-hidden mb-3 bg-[#2b1c17]">
-        {item.backdropPath && (
-          <img
-            src={item.backdropPath}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        )}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-          <span
-            className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity text-4xl"
-            style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48" }}
-          >
-            play_circle
-          </span>
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
-          <div className="h-full bg-[#ffb59c] rounded-full" style={{ width: `${percent}%` }} />
-        </div>
-      </div>
-      <p
-        className="text-sm font-semibold truncate text-[#f9dcd4] group-hover:text-[#ffb59c] transition-colors"
-        style={{ fontFamily: 'Epilogue, sans-serif' }}
-      >
-        {item.title}
-      </p>
-      {item.type === 'episode' && (
-        <p className="text-[10px] text-[#e3bfb3] mt-0.5" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          S{String(item.seasonNumber).padStart(2, '0')}E{String(item.episodeNumber).padStart(2, '0')}
-        </p>
-      )}
-    </button>
+    <div className="px-8 md:px-12 pt-8 pb-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-8">
+      {items.map((item, i) => {
+        const percent = item.runtimeSeconds ? Math.min((item.progressSeconds / item.runtimeSeconds) * 100, 100) : 0
+        const path = item.type === 'movie' ? `/watch/movie/${item.movieId}${item.movieVersionId ? `?version=${item.movieVersionId}` : ''}` : `/watch/episode/${item.episodeId}`
+
+        return (
+          <button key={i} onClick={() => navigate(path)} className="w-full text-left group cursor-pointer">
+            <div className="relative w-full aspect-video rounded-xl overflow-hidden mb-3 bg-[#2b1c17]">
+              {item.backdropPath && (
+                <img
+                  src={item.backdropPath}
+                  alt={item.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                <span
+                  className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity text-5xl"
+                  style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48" }}
+                >
+                  play_circle
+                </span>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+                <div className="h-full bg-[#ffb59c] rounded-full" style={{ width: `${percent}%` }} />
+              </div>
+            </div>
+            <p
+              className="text-base font-semibold truncate text-[#f9dcd4] group-hover:text-[#ffb59c] transition-colors"
+              style={{ fontFamily: 'Epilogue, sans-serif' }}
+            >
+              {item.title}
+            </p>
+            {item.type === 'episode' && (
+              <p className="text-[10px] text-[#e3bfb3] mt-0.5" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+                S{String(item.seasonNumber).padStart(2, '0')}E{String(item.episodeNumber).padStart(2, '0')}
+              </p>
+            )}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
-function DownloadingCard({ title }) {
+function DownloadingCard({ title, onRemove }) {
+  const [removing, setRemoving] = useState(false)
+
+  async function remove() {
+    setRemoving(true)
+    await onRemove()
+    setRemoving(false)
+  }
+
   return (
-    <div className="flex-shrink-0 w-40 text-left opacity-50">
+    <div className="w-full text-left opacity-50">
       <div className="aspect-[2/3] rounded-xl overflow-hidden mb-3 relative bg-[#2b1c17] flex flex-col items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={remove}
+          disabled={removing}
+          aria-label={`Remove ${title} from downloads`}
+          className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-[#f9dcd4] hover:bg-black/80 disabled:opacity-50"
+        >
+          <span className="material-symbols-outlined text-base">close</span>
+        </button>
         <span className="material-symbols-outlined text-4xl text-[#ff9069] animate-spin" style={{ animationDuration: '2s' }}>
           downloading
         </span>
@@ -420,43 +561,37 @@ function DownloadingCard({ title }) {
         </span>
       </div>
       <h3
-        className="font-bold text-[#f9dcd4] truncate text-sm"
+        className="font-bold text-[#f9dcd4] truncate text-base"
         style={{ fontFamily: 'Epilogue, sans-serif' }}
       >
         {title}
       </h3>
+      <button
+        type="button"
+        onClick={remove}
+        disabled={removing}
+        className="mt-1 text-[10px] uppercase tracking-widest text-[#e3bfb3] hover:text-[#ff9069] disabled:opacity-50"
+        style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+      >
+        {removing ? 'Removing…' : 'Remove'}
+      </button>
     </div>
   )
 }
 
-function RequestCard({ onClick }) {
-  return (
-    <button onClick={onClick} className="flex-shrink-0 w-40 text-left group cursor-pointer">
-      <div className="aspect-[2/3] rounded-xl overflow-hidden mb-3 relative bg-[#2b1c17] border-2 border-dashed border-[#5b4138] group-hover:border-[#ff9069] transition-colors flex flex-col items-center justify-center gap-2">
-        <span
-          className="material-symbols-outlined text-4xl text-[#5b4138] group-hover:text-[#ff9069] transition-colors"
-        >
-          add
-        </span>
-      </div>
-      <h3
-        className="font-bold text-[#5b4138] group-hover:text-[#ff9069] transition-colors truncate text-sm"
-        style={{ fontFamily: 'Epilogue, sans-serif' }}
-      >
-        Request
-      </h3>
-    </button>
-  )
-}
-
-function RequestModal({ type, onClose, onConfirmed }) {
-  const [text, setText] = useState('')
+function RequestModal({ type, initialText, onClose, onConfirmed }) {
+  const [text, setText] = useState(initialText ?? '')
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState(null) // { title, mediaType, season }
   const [result, setResult] = useState(null)
 
+  useEffect(() => {
+    if (initialText && initialText.trim()) submit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function submit(e) {
-    e.preventDefault()
+    e?.preventDefault()
     if (!text.trim()) return
     setLoading(true)
     try {
@@ -475,10 +610,10 @@ function RequestModal({ type, onClose, onConfirmed }) {
     }
   }
 
-  async function confirm() {
+  async function confirm(options = {}) {
     setLoading(true)
     try {
-      const { data } = await api.post('/request/confirm', confirmation)
+      const { data } = await api.post('/request/confirm', { ...confirmation, ...options })
       setConfirmation(null)
       setResult({ ok: true, message: data.message })
       onConfirmed()
@@ -500,7 +635,7 @@ function RequestModal({ type, onClose, onConfirmed }) {
             className="text-2xl font-black uppercase tracking-tighter text-[#f9dcd4]"
             style={{ fontFamily: 'Epilogue, sans-serif' }}
           >
-            Request {type === 'movie' ? 'a Movie' : 'a TV Show Season'}
+            Request {type === 'movie' ? 'a Movie' : type === 'tv' ? 'a TV Show Season' : 'Media'}
           </h2>
           <button onClick={onClose} className="text-[#e3bfb3] hover:text-[#ff9069] transition-colors">
             <span className="material-symbols-outlined">close</span>
@@ -547,6 +682,7 @@ function RequestModal({ type, onClose, onConfirmed }) {
             <p className="text-[#e3bfb3] text-sm mb-6" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
               Is this what you're looking for?
             </p>
+            {confirmation.mediaType === 'movie' && <MovieFilterConfirmation movie={confirmation} onConfirm={confirm} busy={loading} />}
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmation(null)}
@@ -555,14 +691,14 @@ function RequestModal({ type, onClose, onConfirmed }) {
               >
                 No, go back
               </button>
-              <button
-                onClick={confirm}
+              {confirmation.mediaType !== 'movie' && <button
+                onClick={() => confirm()}
                 disabled={loading}
                 className="flex-1 px-6 py-3 rounded-full font-bold text-sm text-[#5c1900] hover:brightness-110 active:scale-95 transition-all disabled:opacity-40"
                 style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
               >
                 {loading ? 'Adding…' : 'Yes, add it'}
-              </button>
+              </button>}
             </div>
           </div>
         ) : (
@@ -572,7 +708,7 @@ function RequestModal({ type, onClose, onConfirmed }) {
               type="text"
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder={type === 'movie' ? 'e.g. Dune Part Two' : 'e.g. Severance season #'}
+              placeholder={type === 'tv' ? 'e.g. Severance season #' : type === 'movie' ? 'e.g. Dune Part Two' : 'e.g. Dune Part Two, or Severance season 2'}
               className="w-full bg-[#2b1c17] border border-white/10 rounded-xl px-4 py-3 text-[#f9dcd4] placeholder-[#5b4138] focus:outline-none focus:border-[#ff9069] transition-colors mb-6 text-sm"
               style={{ fontFamily: 'Space Grotesk, sans-serif' }}
             />
@@ -596,17 +732,22 @@ function HowToModal({ onClose }) {
     {
       icon: 'add_circle',
       title: 'Make a Request',
-      body: 'Click the "Request" card at the start of the Movies or TV Shows row. Type in the title you want. For TV shows, include the season number (e.g. "Severance season 2") since only that specific season will be downloaded, not the whole show. Confirm your request and the Downloading card will appear in the row right away.',
+      body: 'Use the request bar below the hero banner. Set the toggle above it to Movie or TV Show, type the title, and hit Request. For a TV show you must include the season (e.g. "Severance season 2") — only that season is downloaded, not the whole series. A confirmation box shows what was found; click "Yes, add it".',
+    },
+    {
+      icon: 'downloading',
+      title: 'Track the Download',
+      body: 'Your pick appears as a "Downloading" card in the Movies or TV Shows grid on the Browse tab.',
     },
     {
       icon: 'radar',
       title: 'Scan Media',
-      body: 'Hit "Scan Media" in the nav bar periodically to check if your download has landed on the server. The page reloads each time it runs.',
+      body: 'Every so often, click "Scan Media" in the top bar ("Scan" on mobile) to pull in anything that has finished downloading. The page reloads each time it runs.',
     },
     {
       icon: 'play_circle',
-      title: 'Keep Re-scanning',
-      body: 'Once the file is on the server, the Downloading card is replaced by the actual title and it is ready to watch.',
+      title: 'Watch',
+      body: 'Once the file lands, the Downloading card becomes the real poster — click it to play. Anything you have partly watched lives under the "Continue Watching" tab.',
     },
   ]
 

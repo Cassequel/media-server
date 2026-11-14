@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import CreditsPanel from '../components/CreditsPanel'
+import { versionLabel } from '../services/movieVersions'
+import FilterAttribution from '../components/FilterAttribution'
 
 export default function MovieDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [movie, setMovie] = useState(null)
   const [favorited, setFavorited] = useState(false)
+  const [showCredits, setShowCredits] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [selectedVersion, setSelectedVersion] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -15,6 +20,7 @@ export default function MovieDetailPage() {
       api.get(`/favorites/movie/${id}/status`)
     ]).then(([{ data: m }, { data: f }]) => {
       setMovie(m)
+      setSelectedVersion(m.defaultVersionId)
       setFavorited(f.favorited)
     }).finally(() => setLoading(false))
   }, [id])
@@ -112,6 +118,17 @@ export default function MovieDetailPage() {
             )}
 
             {/* Progress bar */}
+            {movie.versions?.length > 0 && <div className="mb-5">
+              <label className="block text-sm mb-2" htmlFor="movie-version">Available version</label>
+              <select id="movie-version" className="bg-[#2b1c17] rounded-lg p-3" value={selectedVersion ?? ''} onChange={e => setSelectedVersion(Number(e.target.value))}>
+                {movie.versions.map(v => <option key={v.id} value={v.id}>{versionLabel(v)}</option>)}
+              </select>
+              {movie.versions.filter(v => v.id === selectedVersion).map(v => <div key={v.id} className="text-xs mt-3 text-[#e3bfb3]">
+                {v.durationSeconds > 0 && <p>{Math.ceil(v.durationSeconds / 60)} minutes</p>}
+                {v.notice && <p className="mt-2">{v.notice}</p>}
+                {(v.removeSex || v.muteLanguage) && <FilterAttribution notice={v.notice} muteLanguage={v.muteLanguage} />}
+              </div>)}
+            </div>}
             {progress > 0 && (
               <div className="w-48 h-1 bg-[#42312b] rounded-full mb-6">
                 <div className="h-full bg-[#ffb59c] rounded-full" style={{ width: `${progress}%` }} />
@@ -121,7 +138,7 @@ export default function MovieDetailPage() {
             {/* Action buttons */}
             <div className="flex flex-wrap gap-3">
               <button
-                onClick={() => navigate(`/watch/movie/${id}`)}
+                onClick={() => navigate(`/watch/movie/${id}${selectedVersion ? `?version=${selectedVersion}` : ''}`)}
                 className="px-8 py-3 rounded-full font-bold flex items-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all text-[#5c1900]"
                 style={{ fontFamily: 'Epilogue, sans-serif', background: 'linear-gradient(135deg, #ff9069 0%, #ff7948 100%)' }}
               >
@@ -148,6 +165,28 @@ export default function MovieDetailPage() {
             </div>
           </div>
         </div>
+
+        {movie.tmdbId != null && (
+          <div className="mt-10 pb-16">
+            <div className="flex gap-1 border-b border-[#5b4138] mb-6">
+              <button
+                onClick={() => setShowCredits(v => !v)}
+                className={`px-5 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-all flex items-center gap-1.5 ${
+                  showCredits
+                    ? 'border-[#ffb59c] text-[#ffb59c]'
+                    : 'border-transparent text-[#e3bfb3] hover:text-[#f9dcd4]'
+                }`}
+                style={{ fontFamily: 'Space Grotesk, sans-serif' }}
+              >
+                Cast &amp; Crew
+                <span className="material-symbols-outlined text-base">
+                  {showCredits ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+            </div>
+            {showCredits && <CreditsPanel endpoint={`/movies/${id}/credits`} />}
+          </div>
+        )}
       </div>
     </div>
   )

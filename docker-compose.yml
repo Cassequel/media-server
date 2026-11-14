@@ -12,6 +12,7 @@ services:
       - rockflix-net
 
   api:
+    image: "${ROCKFLIX_API_IMAGE:-rockflix-api}"
     build: ./Rockflix.API
     restart: always
     environment:
@@ -19,6 +20,17 @@ services:
       ASPNETCORE_URLS: "http://+:5244"
       ASPNETCORE_ENVIRONMENT: "Production"
       Media__RootPath: "/mnt/media"
+      Media__CachePath: "${ROCKFLIX_CACHE_PATH:-/var/cache/rockflix}"
+      Media__CacheMaxBytes: "${ROCKFLIX_CACHE_MAX_BYTES:-8589934592}"
+      Filtering__Enabled: "${ROCKFLIX_FILTERING_ENABLED:-false}"
+      DoesTheDogDie__ApiKey: "${DOESTHEDOGDIE_API_KEY:-}"
+      CleanStream__AllowedTmdbIds: "${ROCKFLIX_CLEANSTREAM_PILOT_TMDB_IDS:-}"
+      Filtering__LibraryPath: "${ROCKFLIX_FILTERING_LIBRARY_PATH:-/mnt/media/Rockflix/Movies}"
+      Filtering__WorkPath: "${ROCKFLIX_FILTERING_WORK_PATH:-/mnt/media/Rockflix/.processing}"
+      Filtering__AcquisitionPath: "/mnt/media/Movies/.rockflix-acquisition"
+      Filtering__RadarrAcquisitionPath: "/movies/.rockflix-acquisition"
+      Filtering__FreeSpaceFloorBytes: "10737418240"
+      Filtering__WebhookSecret: "${ROCKFLIX_WEBHOOK_SECRET:-}"
       Jwt__Secret: "${JWT_SECRET}"
       Jwt__Issuer: "Rockflix"
       Jwt__Audience: "RockflixUsers"
@@ -34,12 +46,14 @@ services:
       Sonarr__RootFolderPath: "/tv"
     volumes:
       - /mnt/media:/mnt/media
+      - stream_cache:/var/cache/rockflix
     depends_on:
       - db
     networks:
       - rockflix-net
 
   client:
+    image: "${ROCKFLIX_CLIENT_IMAGE:-rockflix-client}"
     build: ./rockflix-client
     restart: always
     ports:
@@ -51,6 +65,7 @@ services:
 
 volumes:
   postgres_data:
+  stream_cache:
 
 networks:
   rockflix-net:

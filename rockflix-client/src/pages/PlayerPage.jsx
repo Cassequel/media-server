@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
+import FilterAttribution from '../components/FilterAttribution'
 
 export default function PlayerPage() {
   const { id } = useParams()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const requestedVersion = Number(new URLSearchParams(search).get('version')) || null
   const navigate = useNavigate()
   const isMovie = pathname.startsWith('/watch/movie')
   const videoRef = useRef(null)
   const saveRef = useRef(null)
   const [meta, setMeta] = useState(null)
-  const [token, setToken] = useState('')
+  const [token] = useState(() => localStorage.getItem('token') ?? '')
   const [bufferPct, setBufferPct] = useState(0)
   const [playerReady, setPlayerReady] = useState(false)
+  const version = meta?.versions?.find(v => v.id === (requestedVersion ?? meta?.defaultVersionId))
+  const versionId = version?.id ?? requestedVersion
 
   useEffect(() => {
-    const t = localStorage.getItem('token') ?? ''
-    setToken(t)
     if (isMovie) {
       api.get(`/movies/${id}`).then(({ data }) => setMeta(data)).catch(() => {})
     }
@@ -24,22 +26,23 @@ export default function PlayerPage() {
 
   const saveProgress = useCallback(async () => {
     const video = videoRef.current
-    if (!video || video.duration === 0) return
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return
     const progressSeconds = Math.floor(video.currentTime)
     const completed = video.currentTime / video.duration > 0.9
     if (isMovie) {
-      await api.post(`/movies/${id}/progress`, { progressSeconds, completed }).catch(() => {})
+      await api.post(`/movies/${id}/progress`, { progressSeconds, completed, versionId }).catch(() => {})
     } else {
       await api.post(`/tvshows/episodes/${id}/progress`, { progressSeconds, completed }).catch(() => {})
     }
-  }, [id, isMovie])
+  }, [id, isMovie, versionId])
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
 
     const onLoaded = () => {
-      if (meta?.progressSeconds > 10) video.currentTime = meta.progressSeconds
+      const resume = isMovie ? version?.progressSeconds : meta?.progressSeconds
+      if (resume > 10) video.currentTime = resume
     }
     video.addEventListener('loadedmetadata', onLoaded)
 
@@ -50,10 +53,10 @@ export default function PlayerPage() {
       clearInterval(saveRef.current)
       saveProgress()
     }
-  }, [meta, saveProgress])
+  }, [meta, version, isMovie, saveProgress])
 
-  const streamUrl = token
-    ? `/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}`
+  const streamUrl = token && (!isMovie || version)
+    ? `/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}${versionId && isMovie ? `&versionId=${versionId}` : ''}`
     : ''
 
   function handleProgress(e) {
@@ -85,13 +88,16 @@ export default function PlayerPage() {
       </header>
 
       {/* Video */}
+      {version?.notice && <div className="px-6 py-3 text-xs text-[#e3bfb3] bg-[#2b1c17]">{version.notice} {(version.removeSex || version.muteLanguage) && <FilterAttribution notice={version.notice} muteLanguage={version.muteLanguage} />}</div>}
+      {isMovie && meta && !version && <p className="p-6 text-white">This movie version is unavailable. Return to the movie page to choose an available version.</p>}
       <div className="flex-1 flex items-center justify-center bg-black relative">
         {streamUrl && (
           <video
+            key={`${id}-${versionId ?? 'episode'}`}
             ref={videoRef}
             src={streamUrl}
             controls
-            onLoadedMetadata={e => { e.target.muted = false; e.target.volume = 1 }}
+            onLoadedMetadata={e => { e.target.muted = false; e.target.volume = 1; const resume = version?.progressSeconds ?? meta?.progressSeconds; if (resume > 10) e.target.currentTime = resume }}
             onCanPlay={() => setPlayerReady(true)}
             onWaiting={() => setPlayerReady(false)}
             onProgress={handleProgress}

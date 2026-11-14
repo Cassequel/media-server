@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Rockflix.API.Data;
 using Rockflix.API.Models;
 using Rockflix.API.Services;
+using Rockflix.API.Services.Filtering;
 using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 
@@ -117,7 +118,7 @@ public class TelegramController : ControllerBase
                 const long limitBytes = 20L * 1024 * 1024 * 1024;
                 var used = await db.MediaRequests
                     .Where(r => r.UserId == linkedUser.Id)
-                    .SumAsync(r => (long?)(r.FileSizeBytes ?? 0)) ?? 0;
+                    .SumAsync(r => (long?)((r.FileSizeBytes ?? 0) + r.ReservedBytes)) ?? 0;
                 if (used >= limitBytes)
                 {
                     await SendMessageAsync(chatId, "You've reached your 20 GB download limit.");
@@ -136,6 +137,13 @@ public class TelegramController : ControllerBase
                     return;
                 }
 
+                var filtering = scope.ServiceProvider.GetRequiredService<FilterRequestService>();
+                if (pending.MediaType == "movie" && pending.TmdbId.HasValue && linkedUser != null && filtering.Enabled)
+                {
+                    var movieResult = await filtering.ConfirmAsync(linkedUser.Id, pending.TmdbId.Value, pending.Title, new(), CancellationToken.None);
+                    await SendMessageAsync(chatId, movieResult.Message);
+                    return;
+                }
                 var result = await _mediaRequestService.ProcessConfirmedAsync(
                     pending.Title, pending.MediaType, pending.Season, pending.TmdbId, pending.TvdbId);
 
@@ -149,7 +157,7 @@ public class TelegramController : ControllerBase
                     RequestedAt = DateTime.UtcNow
                 });
 
-                if (linkedUser is not null && result.ExternalId.HasValue)
+                if (linkedUser is not null && result.ExternalId.HasValue && !result.Existing)
                 {
                     db.MediaRequests.Add(new MediaRequest
                     {

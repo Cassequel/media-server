@@ -94,6 +94,26 @@ namespace Rockflix.API.Migrations
                     b.ToTable("Favorites");
                 });
 
+            modelBuilder.Entity("Rockflix.API.Models.FilterAssessment", b =>
+                {
+                    b.Property<int>("TmdbId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("TmdbId"));
+
+                    b.Property<DateTime>("FetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("TmdbId");
+
+                    b.ToTable("FilterAssessments");
+                });
+
             modelBuilder.Entity("Rockflix.API.Models.MediaRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -108,6 +128,9 @@ namespace Rockflix.API.Migrations
                     b.Property<long?>("FileSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("FilterJobId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasColumnType("text");
@@ -118,6 +141,9 @@ namespace Rockflix.API.Migrations
 
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("ReservedBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ResolvedTitle")
                         .HasColumnType("text");
@@ -130,6 +156,8 @@ namespace Rockflix.API.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FilterJobId");
 
                     b.HasIndex("UserId");
 
@@ -182,6 +210,148 @@ namespace Rockflix.API.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Movies");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.MovieFilterJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AcceptUnverified")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DownloadId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("MovieVersionId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("MuteLanguage")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalRadarrPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlanJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RadarrCommandId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RadarrMovieId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("RemoveSex")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("ReservedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("SourceCleaned")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SourceFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("TmdbId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MovieVersionId");
+
+                    b.HasIndex("TmdbId", "RemoveSex", "MuteLanguage")
+                        .IsUnique()
+                        .HasFilter("\"Status\" NOT IN ('ready', 'failed', 'cancelled')");
+
+                    b.ToTable("MovieFilterJobs");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.MovieVersion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AudioLanguage")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("DurationSeconds")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("EditPlanJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MovieId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("MuteLanguage")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("RemoveSex")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FilePath")
+                        .IsUnique();
+
+                    b.HasIndex("MovieId");
+
+                    b.ToTable("MovieVersions");
                 });
 
             modelBuilder.Entity("Rockflix.API.Models.TelegramRequest", b =>
@@ -351,6 +521,9 @@ namespace Rockflix.API.Migrations
                     b.Property<int?>("MovieId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("MovieVersionId")
+                        .HasColumnType("integer");
+
                     b.Property<long>("ProgressSeconds")
                         .HasColumnType("bigint");
 
@@ -363,13 +536,19 @@ namespace Rockflix.API.Migrations
 
                     b.HasIndex("MovieId");
 
+                    b.HasIndex("MovieVersionId");
+
                     b.HasIndex("UserId", "EpisodeId")
                         .IsUnique()
                         .HasFilter("\"EpisodeId\" IS NOT NULL");
 
                     b.HasIndex("UserId", "MovieId")
                         .IsUnique()
-                        .HasFilter("\"MovieId\" IS NOT NULL");
+                        .HasFilter("\"MovieId\" IS NOT NULL AND \"MovieVersionId\" IS NULL");
+
+                    b.HasIndex("UserId", "MovieVersionId")
+                        .IsUnique()
+                        .HasFilter("\"MovieVersionId\" IS NOT NULL");
 
                     b.ToTable("WatchHistory");
                 });
@@ -410,13 +589,41 @@ namespace Rockflix.API.Migrations
 
             modelBuilder.Entity("Rockflix.API.Models.MediaRequest", b =>
                 {
+                    b.HasOne("Rockflix.API.Models.MovieFilterJob", "FilterJob")
+                        .WithMany()
+                        .HasForeignKey("FilterJobId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Rockflix.API.Models.User", "User")
                         .WithMany("Requests")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("FilterJob");
+
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.MovieFilterJob", b =>
+                {
+                    b.HasOne("Rockflix.API.Models.MovieVersion", "MovieVersion")
+                        .WithMany()
+                        .HasForeignKey("MovieVersionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("MovieVersion");
+                });
+
+            modelBuilder.Entity("Rockflix.API.Models.MovieVersion", b =>
+                {
+                    b.HasOne("Rockflix.API.Models.Movie", "Movie")
+                        .WithMany("Versions")
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Movie");
                 });
 
             modelBuilder.Entity("Rockflix.API.Models.TelegramRequest", b =>
@@ -443,6 +650,11 @@ namespace Rockflix.API.Migrations
                         .HasForeignKey("MovieId")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("Rockflix.API.Models.MovieVersion", "MovieVersion")
+                        .WithMany()
+                        .HasForeignKey("MovieVersionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Rockflix.API.Models.User", "User")
                         .WithMany("WatchHistory")
                         .HasForeignKey("UserId")
@@ -452,6 +664,8 @@ namespace Rockflix.API.Migrations
                     b.Navigation("Episode");
 
                     b.Navigation("Movie");
+
+                    b.Navigation("MovieVersion");
 
                     b.Navigation("User");
                 });
@@ -463,6 +677,8 @@ namespace Rockflix.API.Migrations
 
             modelBuilder.Entity("Rockflix.API.Models.Movie", b =>
                 {
+                    b.Navigation("Versions");
+
                     b.Navigation("WatchHistory");
                 });
 

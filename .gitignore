@@ -6,8 +6,14 @@ obj/
 .vs/
 
 # Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
 appsettings.json
 appsettings.Development.json
 
 # Local planning docs
 PLAN.md
+.build-tools/
+artifacts/
+__pycache__/

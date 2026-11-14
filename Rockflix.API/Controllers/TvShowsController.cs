@@ -1,16 +1,18 @@
 using System.Security.Claims;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rockflix.API.Data;
 using Rockflix.API.DTOs.Media;
+using Rockflix.API.Services;
 
 namespace Rockflix.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class TvShowsController(AppDbContext db) : ControllerBase
+public class TvShowsController(AppDbContext db, TmdbService tmdb, StreamCacheService cache) : ControllerBase
 {
     private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -27,6 +29,7 @@ public class TvShowsController(AppDbContext db) : ControllerBase
                 PosterPath = s.PosterPath,
                 BackdropPath = s.BackdropPath,
                 TmdbRating = s.TmdbRating,
+                TmdbId = s.TmdbId,
                 Genre = s.Genre,
                 EpisodeCount = s.Episodes.Count,
                 SeasonCount = s.Episodes.Select(e => e.SeasonNumber).Distinct().Count()
@@ -50,6 +53,7 @@ public class TvShowsController(AppDbContext db) : ControllerBase
                 PosterPath = s.PosterPath,
                 BackdropPath = s.BackdropPath,
                 TmdbRating = s.TmdbRating,
+                TmdbId = s.TmdbId,
                 Genre = s.Genre,
                 EpisodeCount = s.Episodes.Count,
                 SeasonCount = s.Episodes.Select(e => e.SeasonNumber).Distinct().Count()
@@ -58,6 +62,16 @@ public class TvShowsController(AppDbContext db) : ControllerBase
 
         if (show == null) return NotFound();
         return Ok(show);
+    }
+
+    [HttpGet("{id}/credits")]
+    public async Task<IActionResult> GetCredits(int id)
+    {
+        var show = await db.TvShows.FindAsync(id);
+        if (show == null) return NotFound();
+        if (show.TmdbId == null) return Ok(new TmdbCreditsResult());
+        var credits = await tmdb.GetCreditsAsync(show.TmdbId.Value, isTv: true);
+        return Ok(credits ?? new TmdbCreditsResult());
     }
 
     [HttpGet("{id}/episodes")]
@@ -90,6 +104,53 @@ public class TvShowsController(AppDbContext db) : ControllerBase
             .ToListAsync();
 
         return Ok(episodes);
+    }
+
+    [HttpPost("{id}/prepare")]
+    public async Task<IActionResult> PrepareShow(int id)
+    {
+        var files = await db.Episodes.Where(e => e.TvShowId == id).OrderBy(e => e.SeasonNumber).ThenBy(e => e.EpisodeNumber).Select(e => e.FilePath).ToListAsync();
+        if (files.Count == 0) return NotFound();
+
+        // Preparation intentionally continues after this request returns. The cache has one
+        // conversion worker, so opening a season cannot overload the server.
+        _ = Task.Run(async () =>
+        {
+            foreach (var file in files)
+            {
+                try { await PrepareFileAsync(file); }
+                catch (Exception ex) { Console.Error.WriteLine($"Could not prepare {file}: {ex.Message}"); }
+            }
+        });
+
+        return Accepted(new { queued = files.Count });
+    }
+
+    private async Task PrepareFileAsync(string filePath)
+    {
+        if (!System.IO.File.Exists(filePath)) return;
+        var video = await ProbeCodecAsync(filePath, "v:0");
+        var audio = await ProbeCodecAsync(filePath, "a:0");
+        var videoCompatible = video == "h264";
+        var audioCompatible = audio == "aac";
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (videoCompatible && audioCompatible && (ext == ".mp4" || ext == ".m4v")) return;
+        await cache.GetOrCreateSeekableMp4Async(filePath, videoCompatible, audioCompatible);
+    }
+
+    private static async Task<string?> ProbeCodecAsync(string filePath, string streamSelector)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "ffprobe",
+            Arguments = $"-v error -select_streams {streamSelector} -show_entries stream=codec_name -of default=nw=1:nk=1 \"{filePath}\"",
+            RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true
+        };
+        using var process = Process.Start(psi)!;
+        var output = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var codec = output.Trim().ToLowerInvariant();
+        return codec.Length > 0 ? codec : null;
     }
 
     [HttpPost("episodes/{episodeId}/progress")]

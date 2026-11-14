@@ -27,11 +27,12 @@ public class WatchHistoryController(AppDbContext db) : ControllerBase
             {
                 Type = "movie",
                 w.MovieId,
+                w.MovieVersionId,
                 Title = w.Movie!.Title,
                 PosterPath = w.Movie.PosterPath,
                 BackdropPath = w.Movie.BackdropPath,
                 w.ProgressSeconds,
-                RuntimeSeconds = (long?)(w.Movie.RuntimeMinutes * 60),
+                RuntimeSeconds = w.MovieVersion != null && w.MovieVersion.DurationSeconds > 0 ? (long?)w.MovieVersion.DurationSeconds : (long?)(w.Movie.RuntimeMinutes * 60),
                 w.LastWatched
             })
             .ToListAsync();

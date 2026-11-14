@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Anthropic;
 using Anthropic.Models.Messages;
+using Microsoft.EntityFrameworkCore;
+using Rockflix.API.Data;
 
 namespace Rockflix.API.Services;
 
@@ -11,6 +13,7 @@ public class MediaRequestService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<MediaRequestService> _logger;
+    private readonly IServiceScopeFactory _scopes;
 
     private static readonly string SystemPrompt = """
         You are a media request parser for a family-friendly media server. The user will send a natural language message requesting a movie or TV show.
@@ -35,11 +38,12 @@ public class MediaRequestService
         "the bear" -> {"blocked":false,"media_type":"tv","title":"The Bear","year":null,"season":null,"confidence":"high"}
         """;
 
-    public MediaRequestService(IConfiguration config, IHttpClientFactory httpClientFactory, ILogger<MediaRequestService> logger)
+    public MediaRequestService(IConfiguration config, IHttpClientFactory httpClientFactory, ILogger<MediaRequestService> logger, IServiceScopeFactory scopes)
     {
         _config = config;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _scopes = scopes;
         _claude = new AnthropicClient(new Anthropic.Core.ClientOptions { ApiKey = config["Anthropic:ApiKey"]! });
     }
 
@@ -92,6 +96,8 @@ public class MediaRequestService
         {
             if (mediaType == "movie" && tmdbId.HasValue)
             {
+                var existing = await CheckOriginalAsync(tmdbId.Value, title);
+                if (existing != null) return existing;
                 var http = _httpClientFactory.CreateClient("radarr");
                 var rootFolder = _config["Radarr:RootFolderPath"]!;
                 const int qualityProfileId = 4;
@@ -107,7 +113,7 @@ public class MediaRequestService
                 });
 
                 if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
-                    return new MediaResult($"'{title}' is already in your library.", mediaType, title, tmdbId);
+                    return new MediaResult($"'{title}' is already managed by Radarr, but an original is not confirmed available. Check requests in Rockflix.", mediaType, title, null);
                 if (!addResp.IsSuccessStatusCode)
                     throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
 
@@ -131,6 +137,18 @@ public class MediaRequestService
 
     public record ParsedLookup(string Title, string MediaType, int? Season, int? TmdbId, int? TvdbId, bool Blocked = false);
 
+    private async Task<MediaResult?> CheckOriginalAsync(int tmdbId, string title)
+    {
+        using var scope = _scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var versions = await db.MovieVersions.Where(v => v.Movie.TmdbId == tmdbId).ToListAsync();
+        if (versions.Any(v => !v.RemoveSex && !v.MuteLanguage && File.Exists(v.FilePath)))
+            return new MediaResult($"The original of '{title}' is already available.", "movie", title, tmdbId, Existing: true);
+        if (versions.Count > 0 || await db.MovieFilterJobs.AnyAsync(j => j.TmdbId == tmdbId))
+            return new MediaResult($"'{title}' has version-specific requests. Request the original through Rockflix's download confirmation so existing versions are preserved.", "movie", title, null);
+        return null;
+    }
+
     public async Task<MediaResult> ProcessRequestAsync(string requestText)
     {
         MediaParsed? parsed;
@@ -149,6 +167,14 @@ public class MediaRequestService
 
         try
         {
+            if (parsed.Blocked) return new MediaResult("This title cannot be requested.", "", null, null);
+            if (parsed.MediaType == "movie")
+            {
+                var http = _httpClientFactory.CreateClient("radarr");
+                var found = await http.GetFromJsonAsync<RadarrMovie[]>($"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
+                var match = found?.FirstOrDefault(m => !parsed.Year.HasValue || m.Year == parsed.Year) ?? found?.FirstOrDefault();
+                if (match != null) return await ProcessConfirmedAsync(match.Title, "movie", null, match.TmdbId, null);
+            }
             var (message, externalId) = parsed.MediaType == "movie"
                 ? await AddMovieAsync(parsed)
                 : await AddTvShowAsync(parsed);
@@ -286,7 +312,7 @@ public class MediaRequestService
         return (message, series.TvdbId);
     }
 
-    public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId);
+    public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId, bool Existing = false);
 
     public record MediaParsed(
         [property: JsonPropertyName("blocked")] bool Blocked = false,

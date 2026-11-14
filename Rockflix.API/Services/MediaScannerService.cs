@@ -21,17 +21,17 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         // Mark pending movie requests as completed if the movie is already in the library.
         // Prefer TMDB ID match (reliable) over title match (fragile).
         var pendingMovies = await db.MediaRequests
-            .Where(r => r.Status == "pending" && r.MediaType == "movie")
+            .Where(r => r.Status == "pending" && r.MediaType == "movie" && r.FilterJobId == null)
             .ToListAsync();
         foreach (var req in pendingMovies)
         {
             bool exists = false;
             if (req.ExternalId.HasValue)
-                exists = await db.Movies.AnyAsync(m => m.TmdbId == req.ExternalId);
+                exists = await db.MovieVersions.AnyAsync(v => v.Movie.TmdbId == req.ExternalId && !v.RemoveSex && !v.MuteLanguage);
             if (!exists && req.ResolvedTitle != null)
-                exists = await db.Movies.AnyAsync(m =>
+                exists = await db.Movies.AnyAsync(m => m.Versions.Any(v => !v.RemoveSex && !v.MuteLanguage) && (
                     EF.Functions.ILike(m.Title, "%" + req.ResolvedTitle + "%") ||
-                    EF.Functions.ILike(req.ResolvedTitle, "%" + m.Title + "%"));
+                    EF.Functions.ILike(req.ResolvedTitle!, "%" + m.Title + "%")));
             if (exists) req.Status = "completed";
         }
 
@@ -51,8 +51,14 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         await db.SaveChangesAsync();
 
         // Remove movies whose file no longer exists
-        var movies = await db.Movies.ToListAsync();
-        var deletedMovies = movies.Where(m => !File.Exists(m.FilePath)).ToList();
+        var movies = await db.Movies.Include(m => m.Versions).ToListAsync();
+        foreach (var movie in movies)
+        {
+            foreach (var missing in movie.Versions.Where(v => !File.Exists(v.FilePath)).ToList())
+            { db.MovieVersions.Remove(missing); movie.Versions.Remove(missing); }
+            if (!File.Exists(movie.FilePath) && movie.Versions.Count > 0) movie.FilePath = movie.Versions.First().FilePath;
+        }
+        var deletedMovies = movies.Where(m => !File.Exists(m.FilePath) && m.Versions.Count == 0).ToList();
         if (deletedMovies.Any())
         {
             db.Movies.RemoveRange(deletedMovies);
@@ -106,8 +112,9 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
 
         foreach (var file in Directory.EnumerateFiles(moviesPath, "*", SearchOption.AllDirectories))
         {
+            if (Path.GetRelativePath(moviesPath, file).Split(Path.DirectorySeparatorChar).Any(p => p.StartsWith('.'))) continue;
             if (!IsVideoFile(file)) continue;
-            if (await db.Movies.AnyAsync(m => m.FilePath == file)) continue;
+            if (await db.MovieVersions.AnyAsync(m => m.FilePath == file)) continue;
 
             var (title, year) = ParseMovieFilename(Path.GetFileNameWithoutExtension(file));
             var meta = await tmdb.SearchMovieAsync(title, year);
@@ -124,7 +131,10 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
                 TmdbId = meta?.TmdbId
             };
 
-            db.Movies.Add(movie);
+            var existingMovie = meta?.TmdbId == null ? null : await db.Movies.FirstOrDefaultAsync(m => m.TmdbId == meta.TmdbId);
+            if (existingMovie != null) movie = existingMovie;
+            else db.Movies.Add(movie);
+            db.MovieVersions.Add(new MovieVersion { Movie = movie, FilePath = file, SizeBytes = new FileInfo(file).Length });
             logger.LogInformation("Added movie: {Title}", movie.Title);
         }
 

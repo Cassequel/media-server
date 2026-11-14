@@ -12,4 +12,7 @@ public class MediaRequest
     public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
     public long? FileSizeBytes { get; set; } // filled by Radarr/Sonarr webhook
     public string Status { get; set; } = "pending"; // pending | completed | failed
+    public Guid? FilterJobId { get; set; }
+    public MovieFilterJob? FilterJob { get; set; }
+    public long ReservedBytes { get; set; }
 }

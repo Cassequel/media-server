@@ -85,6 +85,69 @@ public class TmdbService(HttpClient http, IConfiguration config)
         };
     }
 
+    public async Task<TmdbCreditsResult?> GetCreditsAsync(int tmdbId, bool isTv)
+    {
+        var kind = isTv ? "tv" : "movie";
+        var url = $"{BaseUrl}/{kind}/{tmdbId}/credits?api_key={_apiKey}";
+        var response = await http.GetAsync(url);
+        if (!response.IsSuccessStatusCode) return null;
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var cast = new List<TmdbCastMember>();
+        if (root.TryGetProperty("cast", out var castArr))
+        {
+            foreach (var c in castArr.EnumerateArray())
+            {
+                cast.Add(new TmdbCastMember
+                {
+                    Name = c.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                    Character = c.TryGetProperty("character", out var ch) && ch.ValueKind != JsonValueKind.Null
+                        ? ch.GetString() : null,
+                    ProfilePath = c.TryGetProperty("profile_path", out var p) && p.ValueKind != JsonValueKind.Null
+                        ? ImageBase + p.GetString() : null,
+                    Order = c.TryGetProperty("order", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt32() : 999
+                });
+                if (cast.Count >= 40) break;
+            }
+        }
+
+        var keyJobs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Director", "Writer", "Screenplay", "Story", "Creator", "Producer",
+            "Executive Producer", "Director of Photography", "Original Music Composer", "Editor"
+        };
+        var crew = new List<TmdbCrewMember>();
+        var seen = new HashSet<string>();
+        if (root.TryGetProperty("crew", out var crewArr))
+        {
+            foreach (var c in crewArr.EnumerateArray())
+            {
+                var job = c.TryGetProperty("job", out var j) ? j.GetString() ?? "" : "";
+                if (!keyJobs.Contains(job)) continue;
+                var name = c.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                if (!seen.Add(name + "|" + job)) continue;
+                crew.Add(new TmdbCrewMember
+                {
+                    Name = name,
+                    Job = job,
+                    Department = c.TryGetProperty("department", out var d) && d.ValueKind != JsonValueKind.Null
+                        ? d.GetString() : null,
+                    ProfilePath = c.TryGetProperty("profile_path", out var p) && p.ValueKind != JsonValueKind.Null
+                        ? ImageBase + p.GetString() : null
+                });
+            }
+        }
+
+        return new TmdbCreditsResult
+        {
+            Cast = cast.OrderBy(x => x.Order).ToList(),
+            Crew = crew
+        };
+    }
+
     public async Task<TmdbEpisodeResult?> GetEpisodeAsync(int tmdbId, int season, int episode)
     {
         var url = $"{BaseUrl}/tv/{tmdbId}/season/{season}/episode/{episode}?api_key={_apiKey}";
@@ -134,4 +197,26 @@ public record TmdbEpisodeResult
     public string? Description { get; init; }
     public string? StillPath { get; init; }
     public int? RuntimeMinutes { get; init; }
+}
+
+public record TmdbCreditsResult
+{
+    public List<TmdbCastMember> Cast { get; init; } = [];
+    public List<TmdbCrewMember> Crew { get; init; } = [];
+}
+
+public record TmdbCastMember
+{
+    public string Name { get; init; } = string.Empty;
+    public string? Character { get; init; }
+    public string? ProfilePath { get; init; }
+    public int Order { get; init; }
+}
+
+public record TmdbCrewMember
+{
+    public string Name { get; init; } = string.Empty;
+    public string Job { get; init; } = string.Empty;
+    public string? Department { get; init; }
+    public string? ProfilePath { get; init; }
 }
