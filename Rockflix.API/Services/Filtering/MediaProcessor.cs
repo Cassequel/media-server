@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,6 +12,13 @@ public record ProcessedMedia(double Duration, long Size, string Fingerprint, str
 
 public class MediaProcessor
 {
+    private readonly EncodingOptions _encoding;
+
+    public MediaProcessor(IOptions<EncodingOptions>? encoding = null)
+    {
+        _encoding = encoding?.Value ?? new EncodingOptions();
+        _encoding.Validate();
+    }
     public static async Task<string> RunAsync(string executable, IEnumerable<string> args, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -64,12 +72,14 @@ public class MediaProcessor
             throw new InvalidOperationException("Timestamp boundaries do not match this file. Choose original or retry with another source.");
         var keep = EditPlan.KeepRanges(probe.Duration, edits);
         var fingerprint = await FingerprintAsync(source, ct);
-        var args = new List<string> { "-nostdin", "-hide_banner", "-v", "error", "-y", "-i", source };
+        var args = new List<string> { "-nostdin", "-hide_banner", "-v", "error", "-y" };
+        args.AddRange(_encoding.InputArguments());
+        args.AddRange(["-i", source]);
         // Extract text tracks first, then apply exactly the same timeline transformation as the media.
         var subFiles = new List<string>();
         foreach (int index in probe.TextSubtitles)
         {
-            var raw = await RunAsync("ffmpeg", ["-nostdin", "-v", "error", "-i", source, "-map", $"0:{index}", "-f", "srt", "-"], ct);
+            var raw = await RunAsync("ffmpeg", ["-nostdin", "-v", "error", .._encoding.InputArguments(), "-i", source, "-map", $"0:{index}", .._encoding.OutputArguments(), "-f", "srt", "-"], ct);
             string srt = SubtitleEdits.Apply(raw, keep, muteLanguage);
             if (string.IsNullOrWhiteSpace(srt)) continue;
             string sub = output + $".sub{index}.srt";
@@ -98,9 +108,10 @@ public class MediaProcessor
         for (int i = 0; i < subFiles.Count; i++) args.AddRange(["-map", $"{i + 1}:s:0"]);
         args.AddRange(["-map_metadata", "-1", "-map_chapters", "-1", "-c:v", !cut && probe.VideoCodec == "h264" ? "copy" : "libx264"]);
         if (cut || probe.VideoCodec != "h264") args.AddRange(["-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]);
+        args.AddRange(_encoding.OutputArguments());
         args.AddRange(["-c:a", "aac", "-c:s", "mov_text", "-metadata:s:a:0", $"language={probe.AudioLanguage}", "-movflags", "+faststart", "-f", "mp4", output]);
         await RunAsync("ffmpeg", args, ct);
-        var result = await ValidateAsync(output, keep.Sum(k => k.End - k.Start), ct);
+        var result = await ValidateCoreAsync(output, keep.Sum(k => k.End - k.Start), ct);
         if (await FingerprintAsync(source, ct) != fingerprint) throw new InvalidOperationException("The source changed during filtering; output was not published.");
         foreach (var sub in subFiles) File.Delete(sub);
         if (File.Exists(graphPath)) File.Delete(graphPath);
@@ -111,9 +122,17 @@ public class MediaProcessor
 
     public async Task<MediaProbe> ValidateAsync(string path, double expectedDuration, CancellationToken ct)
     {
+        await MediaEncodingGate.Semaphore.WaitAsync(ct);
+        try { return await ValidateCoreAsync(path, expectedDuration, ct); }
+        finally { MediaEncodingGate.Semaphore.Release(); }
+    }
+
+    // ProcessAsync already owns the gate through encoding and full validation.
+    private async Task<MediaProbe> ValidateCoreAsync(string path, double expectedDuration, CancellationToken ct)
+    {
         var probe = await ProbeAsync(path, ct);
         if (Math.Abs(probe.Duration - expectedDuration) > 1.0) throw new InvalidOperationException("Output duration did not match the edit plan.");
-        await RunAsync("ffmpeg", ["-nostdin", "-v", "error", "-xerror", "-i", path, "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"], ct);
+        await RunAsync("ffmpeg", ["-nostdin", "-v", "error", "-xerror", .._encoding.InputArguments(), "-i", path, "-map", "0:v:0", "-map", "0:a:0", .._encoding.OutputArguments(), "-f", "null", "-"], ct);
         return probe;
     }
 }

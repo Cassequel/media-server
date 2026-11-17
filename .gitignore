@@ -17,3 +17,5 @@ PLAN.md
 .build-tools/
 artifacts/
 __pycache__/
+
+/docs

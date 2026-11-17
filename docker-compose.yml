@@ -14,6 +14,7 @@ services:
   api:
     image: "${ROCKFLIX_API_IMAGE:-rockflix-api}"
     build: ./Rockflix.API
+    cpus: "${ROCKFLIX_API_CPUS:-4.0}"
     restart: always
     environment:
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=rockflix;Username=postgres;Password=${DB_PASSWORD}"
@@ -22,6 +23,8 @@ services:
       Media__RootPath: "/mnt/media"
       Media__CachePath: "${ROCKFLIX_CACHE_PATH:-/var/cache/rockflix}"
       Media__CacheMaxBytes: "${ROCKFLIX_CACHE_MAX_BYTES:-8589934592}"
+      Encoding__CodecThreads: "${ROCKFLIX_CODEC_THREADS:-2}"
+      Encoding__FilterThreads: "${ROCKFLIX_FILTER_THREADS:-1}"
       Filtering__Enabled: "${ROCKFLIX_FILTERING_ENABLED:-false}"
       DoesTheDogDie__ApiKey: "${DOESTHEDOGDIE_API_KEY:-}"
       CleanStream__AllowedTmdbIds: "${ROCKFLIX_CLEANSTREAM_PILOT_TMDB_IDS:-}"

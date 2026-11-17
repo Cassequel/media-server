@@ -68,6 +68,7 @@ export default function FavoritesPage() {
                     <img
                       src={fav.posterPath}
                       alt={fav.title}
+                      loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     />
                   )

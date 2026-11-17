@@ -12,7 +12,6 @@ export default function TvShowPage() {
   const [selectedSeason, setSelectedSeason] = useState(1)
   const [tvTab, setTvTab] = useState('episodes') // 'episodes' | 'credits'
   const [loading, setLoading] = useState(true)
-  const [preparing, setPreparing] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -24,7 +23,6 @@ export default function TvShowPage() {
       setEpisodes(eps)
       setFavorited(f.favorited)
        if (eps.length > 0) setSelectedSeason(eps[0].seasonNumber)
-      api.post(`/tvshows/${id}/prepare`).then(({ data }) => setPreparing(`${data.queued} episodes queued for offline-ready playback`)).catch(() => {})
     }).finally(() => setLoading(false))
   }, [id])
 
@@ -114,11 +112,6 @@ export default function TvShowPage() {
               <p className="text-[#e3bfb3] max-w-2xl mb-6 leading-relaxed line-clamp-3">{show.description}</p>
             )}
 
-            {preparing && (
-              <p className="text-[#ffb59c] text-sm mb-5" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-                Preparing season: {preparing}
-              </p>
-            )}
 
             <button
               onClick={toggleFavorite}

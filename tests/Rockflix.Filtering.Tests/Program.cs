@@ -23,6 +23,7 @@ using Rockflix.API.Controllers;
 
 int passed = 0;
 void Check(bool condition, string label) { if (!condition) throw new Exception("FAIL: " + label); Console.WriteLine("PASS: " + label); passed++; }
+await ResourceRegressionTests.RunAsync(Check, args.Contains("--media"));
 void Reject(Action action, string label) { try { action(); } catch (InvalidOperationException) { Check(true, label); return; } throw new Exception("FAIL: " + label); }
 var edits = new List<EditInterval> { new(2, 4, "skip"), new(3, 5, "skip"), new(7, 8, "mute") };
 var merged = EditPlan.Merge(edits, "skip");

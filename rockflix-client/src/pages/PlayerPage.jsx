@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import FilterAttribution from '../components/FilterAttribution'
@@ -7,57 +7,60 @@ export default function PlayerPage() {
   const { id } = useParams()
   const { pathname, search } = useLocation()
   const requestedVersion = Number(new URLSearchParams(search).get('version')) || null
+  const [retry, setRetry] = useState(0)
+  return <PlayerSession key={`${pathname}:${id}:${requestedVersion}:${retry}`} id={id} isMovie={pathname.startsWith('/watch/movie')} requestedVersion={requestedVersion} retry={() => setRetry(n => n + 1)} />
+}
+
+function PlayerSession({ id, isMovie, requestedVersion, retry }) {
   const navigate = useNavigate()
-  const isMovie = pathname.startsWith('/watch/movie')
   const videoRef = useRef(null)
-  const saveRef = useRef(null)
+  const resumed = useRef(false)
   const [meta, setMeta] = useState(null)
+  const [error, setError] = useState('')
   const [token] = useState(() => localStorage.getItem('token') ?? '')
   const [bufferPct, setBufferPct] = useState(0)
   const [playerReady, setPlayerReady] = useState(false)
+  const [hasPlayed, setHasPlayed] = useState(false)
   const version = meta?.versions?.find(v => v.id === (requestedVersion ?? meta?.defaultVersionId))
-  const versionId = version?.id ?? requestedVersion
+  const versionId = version?.id
+  const failure = error || (!token ? 'Your session is missing. Sign in again.' : '') ||
+    (isMovie && meta && !version ? 'This movie version is unavailable. Choose an available version from the movie page.' : '')
 
   useEffect(() => {
-    if (isMovie) {
-      api.get(`/movies/${id}`).then(({ data }) => setMeta(data)).catch(() => {})
-    }
+    let active = true
+    api.get(isMovie ? `/movies/${id}` : `/tvshows/episodes/${id}`)
+      .then(({ data }) => { if (active) setMeta(data) })
+      .catch(() => { if (active) setError('Could not load video details. Please retry.') })
+    return () => { active = false }
   }, [id, isMovie])
 
-  const saveProgress = useCallback(async () => {
-    const video = videoRef.current
-    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return
-    const progressSeconds = Math.floor(video.currentTime)
-    const completed = video.currentTime / video.duration > 0.9
-    if (isMovie) {
-      await api.post(`/movies/${id}/progress`, { progressSeconds, completed, versionId }).catch(() => {})
-    } else {
-      await api.post(`/tvshows/episodes/${id}/progress`, { progressSeconds, completed }).catch(() => {})
-    }
-  }, [id, isMovie, versionId])
-
+  // Capture the actual element and its identity; cleanup must never read a new source's ref.
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-
-    const onLoaded = () => {
-      const resume = isMovie ? version?.progressSeconds : meta?.progressSeconds
-      if (resume > 10) video.currentTime = resume
+    const save = () => {
+      if (!resumed.current || !Number.isFinite(video.duration) || video.duration <= 0) return
+      const payload = { progressSeconds: Math.floor(video.currentTime), completed: video.currentTime / video.duration > 0.9 }
+      if (isMovie) payload.versionId = versionId
+      api.post(isMovie ? `/movies/${id}/progress` : `/tvshows/episodes/${id}/progress`, payload).catch(() => {})
     }
-    video.addEventListener('loadedmetadata', onLoaded)
+    const timer = setInterval(save, 10000)
+    video.addEventListener('ended', save)
+    return () => { clearInterval(timer); video.removeEventListener('ended', save); save() }
+  }, [id, isMovie, versionId, meta, failure])
 
-    saveRef.current = setInterval(saveProgress, 10000)
-
-    return () => {
-      video.removeEventListener('loadedmetadata', onLoaded)
-      clearInterval(saveRef.current)
-      saveProgress()
-    }
-  }, [meta, version, isMovie, saveProgress])
-
-  const streamUrl = token && (!isMovie || version)
-    ? `/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}${versionId && isMovie ? `&versionId=${versionId}` : ''}`
+  const streamUrl = meta && !failure
+    ? `/api/stream/${isMovie ? 'movie' : 'episode'}/${id}?token=${encodeURIComponent(token)}${isMovie ? `&versionId=${versionId}` : ''}`
     : ''
+
+  function resumeOnce(e) {
+    if (resumed.current) return
+    const video = e.currentTarget
+    const resume = isMovie ? version?.progressSeconds : meta?.progressSeconds
+    if (Number.isFinite(resume) && resume > 10 && Number.isFinite(video.duration) && video.duration > 0)
+      video.currentTime = Math.min(resume, Math.max(0, video.duration - 1))
+    resumed.current = true
+  }
 
   function handleProgress(e) {
     const v = e.target
@@ -89,20 +92,21 @@ export default function PlayerPage() {
 
       {/* Video */}
       {version?.notice && <div className="px-6 py-3 text-xs text-[#e3bfb3] bg-[#2b1c17]">{version.notice} {(version.removeSex || version.muteLanguage) && <FilterAttribution notice={version.notice} muteLanguage={version.muteLanguage} />}</div>}
-      {isMovie && meta && !version && <p className="p-6 text-white">This movie version is unavailable. Return to the movie page to choose an available version.</p>}
       <div className="flex-1 flex items-center justify-center bg-black relative">
+        {failure && <div role="alert" className="p-6 text-white text-center"><p>{failure}</p><button className="m-3 underline" onClick={retry}>Retry</button><button className="m-3 underline" onClick={() => navigate(-1)}>Back</button></div>}
+        {!meta && !failure && <p className="text-white">Loading video details...</p>}
         {streamUrl && (
           <video
             key={`${id}-${versionId ?? 'episode'}`}
             ref={videoRef}
             src={streamUrl}
             controls
-            onLoadedMetadata={e => { e.target.muted = false; e.target.volume = 1; const resume = version?.progressSeconds ?? meta?.progressSeconds; if (resume > 10) e.target.currentTime = resume }}
-            onCanPlay={() => setPlayerReady(true)}
+            onLoadedMetadata={resumeOnce}
+            onCanPlay={() => { setPlayerReady(true); setHasPlayed(true) }}
+            onError={() => setError("Playback failed. The file may be unavailable or unsupported. Retry or return to the library.")}
             onWaiting={() => setPlayerReady(false)}
             onProgress={handleProgress}
             className="w-full max-h-[calc(100vh-56px)]"
-            onEnded={saveProgress}
           />
         )}
 
@@ -130,7 +134,7 @@ export default function PlayerPage() {
                   />
                 </div>
                 <p className="text-[#e3bfb3] text-xs text-right tabular-nums" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-                  {bufferPct > 0 ? `${bufferPct}%` : 'Loading…'}
+                  {hasPlayed ? `Buffering (${bufferPct}% buffered)` : 'Preparing or loading video'}
                 </p>
               </div>
             </div>

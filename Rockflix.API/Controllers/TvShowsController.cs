@@ -106,24 +106,43 @@ public class TvShowsController(AppDbContext db, TmdbService tmdb, StreamCacheSer
         return Ok(episodes);
     }
 
-    [HttpPost("{id}/prepare")]
-    public async Task<IActionResult> PrepareShow(int id)
+    [HttpGet("episodes/{episodeId}")]
+    public async Task<IActionResult> GetEpisode(int episodeId)
     {
-        var files = await db.Episodes.Where(e => e.TvShowId == id).OrderBy(e => e.SeasonNumber).ThenBy(e => e.EpisodeNumber).Select(e => e.FilePath).ToListAsync();
-        if (files.Count == 0) return NotFound();
-
-        // Preparation intentionally continues after this request returns. The cache has one
-        // conversion worker, so opening a season cannot overload the server.
-        _ = Task.Run(async () =>
-        {
-            foreach (var file in files)
+        var userId = UserId;
+        var episode = await db.Episodes.Where(e => e.Id == episodeId)
+            .Select(e => new EpisodeDto
             {
-                try { await PrepareFileAsync(file); }
-                catch (Exception ex) { Console.Error.WriteLine($"Could not prepare {file}: {ex.Message}"); }
-            }
-        });
+                Id = e.Id,
+                TvShowId = e.TvShowId,
+                SeasonNumber = e.SeasonNumber,
+                EpisodeNumber = e.EpisodeNumber,
+                Title = e.Title,
+                Description = e.Description,
+                StillPath = e.StillPath,
+                RuntimeMinutes = e.RuntimeMinutes,
+                ProgressSeconds = db.WatchHistory
+                    .Where(w => w.UserId == userId && w.EpisodeId == e.Id)
+                    .Select(w => (long?)w.ProgressSeconds)
+                    .FirstOrDefault(),
+                Completed = db.WatchHistory
+                    .Where(w => w.UserId == userId && w.EpisodeId == e.Id)
+                    .Select(w => (bool?)w.Completed)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync();
+        return episode == null ? NotFound() : Ok(episode);
+    }
 
-        return Accepted(new { queued = files.Count });
+    [HttpPost("{id}/prepare")]
+    public async Task<IActionResult> PrepareShow(int id, [FromQuery] int? episodeId)
+    {
+        if (episodeId == null) return BadRequest("An explicit episodeId is required.");
+        var file = await db.Episodes.Where(e => e.TvShowId == id && e.Id == episodeId)
+            .Select(e => e.FilePath).FirstOrDefaultAsync();
+        if (file == null || !System.IO.File.Exists(file)) return NotFound();
+        await PrepareFileAsync(file);
+        return Ok(new { prepared = episodeId.Value });
     }
 
     private async Task PrepareFileAsync(string filePath)

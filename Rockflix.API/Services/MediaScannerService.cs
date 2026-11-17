@@ -35,19 +35,6 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
             if (exists) req.Status = "completed";
         }
 
-        // Mark pending TV requests as completed if the show is already in the library.
-        // ExternalId for TV is tvdbId (not stored on TvShow), so fall back to title match.
-        var pendingTv = await db.MediaRequests
-            .Where(r => r.Status == "pending" && r.MediaType == "tv" && r.ResolvedTitle != null)
-            .ToListAsync();
-        foreach (var req in pendingTv)
-        {
-            var exists = await db.TvShows.AnyAsync(s =>
-                EF.Functions.ILike(s.Title, "%" + req.ResolvedTitle + "%") ||
-                EF.Functions.ILike(req.ResolvedTitle, "%" + s.Title + "%"));
-            if (exists) req.Status = "completed";
-        }
-
         await db.SaveChangesAsync();
 
         // Remove movies whose file no longer exists
@@ -149,7 +136,7 @@ public partial class MediaScannerService(AppDbContext db, TmdbService tmdb, ICon
         foreach (var showDir in Directory.GetDirectories(tvPath))
         {
             var showName = Path.GetFileName(showDir);
-            var show = await db.TvShows.Include(s => s.Episodes)
+            var show = await db.TvShows
                 .FirstOrDefaultAsync(s => s.Title == showName);
 
             if (show == null)

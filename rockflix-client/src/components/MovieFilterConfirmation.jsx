@@ -41,9 +41,9 @@ export default function MovieFilterConfirmation({ movie, onConfirm, busy }) {
   return <div className="space-y-4 mb-5 text-sm text-[#e3bfb3]">
     {enabled && <>
       <label className="flex gap-3 items-start"><input type="checkbox" checked={removeSex} disabled={busy} onChange={e => change(setRemoveSex, e.target.checked)} />
-        <span>Remove sex and nudity<small className="block mt-1">Skips nudity, sexual activity and pornographic images. Keeps ordinary romance; violence is unchanged.</small></span></label>
+        <span>Remove sex and nudity<small className="block mt-1">Skips available annotated sexual-content scenes. Annotations can omit scenes or mismatch this edition; violence is unchanged.</small></span></label>
       <label className="flex gap-3 items-start"><input type="checkbox" checked={muteLanguage} disabled={busy} onChange={e => change(setMuteLanguage, e.target.checked)} />
-        <span>Mute strong language<small className="block mt-1">Strong profanity and slurs, where timestamps exist. Primary English audio only. Mutes all sound during the interval.</small></span></label>
+        <span>Mute selected timestamped slurs<small className="block mt-1">Selected slurs where timestamps exist, not comprehensive spoken-profanity removal. Subtitle cleanup is separate. Primary English audio only. Mutes all sound during each interval.</small></span></label>
     </>}
     {versions.length > 0 && <p>Already available: {versions.map(versionLabel).join(', ')}.</p>}
     {match && <p>This exact version is available. No additional download is needed.</p>}

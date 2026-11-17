@@ -46,6 +46,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // Services
+builder.Services.AddOptions<EncodingOptions>()
+    .Bind(builder.Configuration.GetSection(EncodingOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<MediaScannerService>();

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -15,6 +16,7 @@ public class StreamCacheService
 {
     private const long DefaultMaxCacheBytes = 20L * 1024 * 1024 * 1024; // 20 GiB
 
+    private readonly EncodingOptions _encoding;
     private readonly string _cacheRoot;
     private readonly long _maxCacheBytes;
     private readonly long _freeSpaceFloorBytes;
@@ -23,8 +25,10 @@ public class StreamCacheService
     // One encoder prevents several first-play requests from exhausting the host.
     private readonly SemaphoreSlim _conversionGate = MediaEncodingGate.Semaphore;
 
-    public StreamCacheService(IConfiguration config, ILogger<StreamCacheService> logger)
+    public StreamCacheService(IConfiguration config, ILogger<StreamCacheService> logger, IOptions<EncodingOptions>? encoding = null)
     {
+        _encoding = encoding?.Value ?? new EncodingOptions();
+        _encoding.Validate();
         var mediaRoot = config["Media:RootPath"]!;
         _cacheRoot = config["Media:CachePath"] ?? Path.Combine(mediaRoot, ".stream-cache");
         _maxCacheBytes = config.GetValue<long?>("Media:CacheMaxBytes") ?? DefaultMaxCacheBytes;
@@ -69,8 +73,11 @@ public class StreamCacheService
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            foreach (var arg in new[] { "-nostdin", "-v", "error", "-y", "-i", sourcePath }) psi.ArgumentList.Add(arg);
+            foreach (var arg in new[] { "-nostdin", "-v", "error", "-y" }.Concat(_encoding.InputArguments()).Concat(new[] { "-i", sourcePath })) psi.ArgumentList.Add(arg);
+            // Match the first video/audio streams inspected by StreamController.
+            foreach (var arg in new[] { "-map", "0:v:0", "-map", "0:a:0?" }) psi.ArgumentList.Add(arg);
             foreach (var arg in (videoArgs + " " + audioArgs).Split(' ', StringSplitOptions.RemoveEmptyEntries)) psi.ArgumentList.Add(arg);
+            foreach (var arg in _encoding.OutputArguments()) psi.ArgumentList.Add(arg);
             foreach (var arg in new[] { "-movflags", "+faststart", "-f", "mp4", tmpPath }) psi.ArgumentList.Add(arg);
 
             using var process = Process.Start(psi)!;

@@ -14,11 +14,11 @@ public class TmdbService(HttpClient http, IConfiguration config)
         var yearParam = year.HasValue ? $"&year={year}" : "";
         var url = $"{BaseUrl}/search/movie?api_key={_apiKey}&query={query}{yearParam}";
 
-        var response = await http.GetAsync(url);
+        using var response = await http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
-        var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
         var results = doc.RootElement.GetProperty("results");
 
         if (results.GetArrayLength() == 0) return null;
@@ -62,11 +62,11 @@ public class TmdbService(HttpClient http, IConfiguration config)
         var yearParam = year.HasValue ? $"&first_air_date_year={year}" : "";
         var url = $"{BaseUrl}/search/tv?api_key={_apiKey}&query={query}{yearParam}";
 
-        var response = await http.GetAsync(url);
+        using var response = await http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
-        var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
         var results = doc.RootElement.GetProperty("results");
 
         if (results.GetArrayLength() == 0) return null;
@@ -89,7 +89,7 @@ public class TmdbService(HttpClient http, IConfiguration config)
     {
         var kind = isTv ? "tv" : "movie";
         var url = $"{BaseUrl}/{kind}/{tmdbId}/credits?api_key={_apiKey}";
-        var response = await http.GetAsync(url);
+        using var response = await http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
@@ -151,11 +151,11 @@ public class TmdbService(HttpClient http, IConfiguration config)
     public async Task<TmdbEpisodeResult?> GetEpisodeAsync(int tmdbId, int season, int episode)
     {
         var url = $"{BaseUrl}/tv/{tmdbId}/season/{season}/episode/{episode}?api_key={_apiKey}";
-        var response = await http.GetAsync(url);
+        using var response = await http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
-        var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
         return new TmdbEpisodeResult

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Anthropic;
@@ -99,35 +100,34 @@ public class MediaRequestService
                 var existing = await CheckOriginalAsync(tmdbId.Value, title);
                 if (existing != null) return existing;
                 var http = _httpClientFactory.CreateClient("radarr");
-                var rootFolder = _config["Radarr:RootFolderPath"]!;
-                const int qualityProfileId = 4;
-
-                var addResp = await http.PostAsJsonAsync("/api/v3/movie", new
+                var managed = await FindRemoteAsync(http, "movie", "tmdbId", tmdbId.Value);
+                if (managed != null) return new MediaResult("This movie is managed by Radarr, but a local original is not confirmed available. Check requests in Rockflix.", mediaType, title, null);
+                var qualityProfileId = await ValidateProfileAsync(http, "Radarr");
+                using var addResp = await http.PostAsJsonAsync("/api/v3/movie", new
                 {
-                    tmdbId = tmdbId.Value,
-                    title,
-                    qualityProfileId,
-                    rootFolderPath = rootFolder,
-                    monitored = true,
+                    tmdbId = tmdbId.Value, title, qualityProfileId,
+                    rootFolderPath = _config["Radarr:RootFolderPath"], monitored = true,
                     addOptions = new { searchForMovie = true }
                 });
-
-                if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
-                    return new MediaResult($"'{title}' is already managed by Radarr, but an original is not confirmed available. Check requests in Rockflix.", mediaType, title, null);
                 if (!addResp.IsSuccessStatusCode)
-                    throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
+                {
+                    if ((int)addResp.StatusCode is 400 or 409 && await FindRemoteAsync(http, "movie", "tmdbId", tmdbId.Value) != null)
+                        return new MediaResult("This movie is managed by Radarr, but a local original is not confirmed available. Check requests in Rockflix.", mediaType, title, null);
+                    EnsureRemoteSuccess(addResp, "Radarr");
+                }
 
                 return new MediaResult($"Added '{title}' — download starting soon!", mediaType, title, tmdbId);
             }
             else if (mediaType == "tv" && tvdbId.HasValue)
             {
                 var parsed = new MediaParsed(Blocked: false, MediaType: mediaType, Title: title, Year: null, Season: season, Confidence: "high");
-                var (message, externalId) = await AddTvShowAsync(parsed);
+                var (message, externalId) = await AddTvShowAsync(parsed, tvdbId);
                 return new MediaResult(message, mediaType, title, externalId);
             }
 
             return new MediaResult($"Couldn't add '{title}'.", mediaType, title, null);
         }
+        catch (RemoteRequestException ex) { return new MediaResult(ex.Message, mediaType, title, null); }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to add confirmed media: {Title}", title);
@@ -180,6 +180,7 @@ public class MediaRequestService
                 : await AddTvShowAsync(parsed);
             return new MediaResult(message, parsed.MediaType, parsed.Title, externalId);
         }
+        catch (RemoteRequestException ex) { return new MediaResult(ex.Message, parsed.MediaType, parsed.Title, null); }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to add media: {Title}", parsed.Title);
@@ -199,7 +200,7 @@ public class MediaRequestService
             },
             Messages = new List<MessageParam>
             {
-                new() { Role = Role.User, Content = smsText }
+                new UserMessageParam(smsText)
             }
         });
 
@@ -232,85 +233,97 @@ public class MediaRequestService
     private async Task<(string message, int? externalId)> AddMovieAsync(MediaParsed parsed)
     {
         var http = _httpClientFactory.CreateClient("radarr");
-        var rootFolder = _config["Radarr:RootFolderPath"]!;
-        const int qualityProfileId = 4;
-
-        var lookup = await http.GetFromJsonAsync<RadarrMovie[]>(
-            $"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
-        var movie = lookup?.FirstOrDefault()
-            ?? throw new InvalidOperationException($"Radarr found no results for '{parsed.Title}'");
-
-        var addResp = await http.PostAsJsonAsync("/api/v3/movie", new
-        {
-            tmdbId = movie.TmdbId,
-            title = movie.Title,
-            year = movie.Year,
-            qualityProfileId,
-            rootFolderPath = rootFolder,
-            monitored = true,
-            addOptions = new { searchForMovie = true }
-        });
-
-        if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
-        {
-            var body = await addResp.Content.ReadAsStringAsync();
-            _logger.LogWarning("Radarr 400 for {Title}: {Body}", movie.Title, body);
-            if (!body.Contains("already")) throw new HttpRequestException($"Radarr rejected: {body}");
-        }
-        else if (!addResp.IsSuccessStatusCode)
-            throw new HttpRequestException($"Radarr returned {addResp.StatusCode}");
-
-        var message = addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
-            ? $"'{movie.Title}' is already in your library."
-            : $"Added '{movie.Title}' ({movie.Year}) — download starting soon!";
-        return (message, movie.TmdbId);
+        var lookup = await http.GetFromJsonAsync<RadarrMovie[]>($"/api/v3/movie/lookup?term={Uri.EscapeDataString(parsed.Title)}");
+        var movie = lookup?.FirstOrDefault(m => !parsed.Year.HasValue || m.Year == parsed.Year) ?? lookup?.FirstOrDefault();
+        if (movie == null) return ("Radarr found no matching movie.", null);
+        var result = await ProcessConfirmedAsync(movie.Title, "movie", null, movie.TmdbId, null);
+        return (result.Message, result.ExternalId);
     }
 
-    private async Task<(string message, int? externalId)> AddTvShowAsync(MediaParsed parsed)
+    private async Task<(string message, int? externalId)> AddTvShowAsync(MediaParsed parsed, int? confirmedId = null)
     {
         var http = _httpClientFactory.CreateClient("sonarr");
-        var rootFolder = _config["Sonarr:RootFolderPath"]!;
-        const int qualityProfileId = 4;
-
-        var lookup = await http.GetFromJsonAsync<SonarrSeries[]>(
-            $"/api/v3/series/lookup?term={Uri.EscapeDataString(parsed.Title)}");
-        var series = lookup?.FirstOrDefault()
-            ?? throw new InvalidOperationException($"Sonarr found no results for '{parsed.Title}'");
-
-        var seasons = series.Seasons?.Select(s => new
+        if (confirmedId == null)
         {
-            seasonNumber = s.SeasonNumber,
-            monitored = parsed.Season.HasValue
-                ? s.SeasonNumber == parsed.Season.Value
-                : s.SeasonNumber == series.Seasons.Max(x => x.SeasonNumber)
-        }).ToList<object>();
-
-        var addResp = await http.PostAsJsonAsync("/api/v3/series", new
-        {
-            tvdbId = series.TvdbId,
-            title = series.Title,
-            qualityProfileId,
-            rootFolderPath = rootFolder,
-            monitored = true,
-            seasons,
-            addOptions = new { searchForMissingEpisodes = true }
-        });
-
-        if (addResp.StatusCode == System.Net.HttpStatusCode.BadRequest)
-        {
-            var body = await addResp.Content.ReadAsStringAsync();
-            _logger.LogWarning("Sonarr 400 for {Title}: {Body}", series.Title, body);
-            if (!body.Contains("already")) throw new HttpRequestException($"Sonarr rejected: {body}");
+            var matches = await http.GetFromJsonAsync<SonarrSeries[]>($"/api/v3/series/lookup?term={Uri.EscapeDataString(parsed.Title)}");
+            confirmedId = (matches?.FirstOrDefault(s => !parsed.Year.HasValue || s.Year == parsed.Year) ?? matches?.FirstOrDefault())?.TvdbId;
         }
-        else if (!addResp.IsSuccessStatusCode)
-            throw new HttpRequestException($"Sonarr returned {addResp.StatusCode}");
-
-        var seasonMsg = parsed.Season.HasValue ? $" Season {parsed.Season}" : "";
-        var message = addResp.StatusCode == System.Net.HttpStatusCode.BadRequest
-            ? $"'{series.Title}'{seasonMsg} is already in your library."
-            : $"Added '{series.Title}'{seasonMsg} — download starting soon!";
-        return (message, series.TvdbId);
+        if (confirmedId is null or <= 0) return ("Sonarr found no matching TV identity.", null);
+        var existing = await FindRemoteAsync(http, "series", "tvdbId", confirmedId.Value);
+        var lookup = existing == null
+            ? await http.GetFromJsonAsync<JsonArray>($"/api/v3/series/lookup?term=tvdb:{confirmedId}") : null;
+        var series = existing ?? lookup?.OfType<JsonObject>().FirstOrDefault(s => s["tvdbId"]?.GetValue<int>() == confirmedId);
+        if (series == null) return ("Sonarr could not resolve the confirmed TVDB identity.", null);
+        var seasons = series["seasons"]?.AsArray();
+        var numbers = seasons?.OfType<JsonObject>().Select(s => s["seasonNumber"]!.GetValue<int>()).ToArray() ?? [];
+        if (numbers.Length == 0) return ("Sonarr has no seasons for this series.", null);
+        int selected = parsed.Season ?? numbers.Max();
+        if (!numbers.Contains(selected)) return ("The requested season does not exist in Sonarr.", null);
+        if (existing != null) await RequestExistingSeasonAsync(http, existing, selected);
+        else
+        {
+            var profile = await ValidateProfileAsync(http, "Sonarr");
+            series["qualityProfileId"] = profile;
+            series["rootFolderPath"] = _config["Sonarr:RootFolderPath"];
+            series["monitored"] = true;
+            foreach (var season in seasons!.OfType<JsonObject>()) season["monitored"] = season["seasonNumber"]!.GetValue<int>() == selected;
+            series["addOptions"] = new JsonObject { ["searchForMissingEpisodes"] = true };
+            using var added = await http.PostAsJsonAsync("/api/v3/series", series);
+            if (!added.IsSuccessStatusCode)
+            {
+                var raced = (int)added.StatusCode is 400 or 409 ? await FindRemoteAsync(http, "series", "tvdbId", confirmedId.Value) : null;
+                if (raced == null) EnsureRemoteSuccess(added, "Sonarr");
+                else await RequestExistingSeasonAsync(http, raced, selected);
+            }
+        }
+        return ($"Requested '{parsed.Title}' Season {selected}. Sonarr search started.", confirmedId);
     }
+
+    private static async Task RequestExistingSeasonAsync(HttpClient http, JsonObject series, int selected)
+    {
+        var season = series["seasons"]?.AsArray().OfType<JsonObject>().FirstOrDefault(s => s["seasonNumber"]?.GetValue<int>() == selected);
+        if (season == null) throw new RemoteRequestException("The requested season does not exist in Sonarr.");
+        series["monitored"] = true;
+        season["monitored"] = true;
+        int id = series["id"]!.GetValue<int>();
+        using var updated = await http.PutAsJsonAsync($"/api/v3/series/{id}", series);
+        EnsureRemoteSuccess(updated, "Sonarr");
+        using var search = await http.PostAsJsonAsync("/api/v3/command", new { name = "SeasonSearch", seriesId = id, seasonNumber = selected });
+        EnsureRemoteSuccess(search, "Sonarr");
+    }
+
+    private static async Task<JsonObject?> FindRemoteAsync(HttpClient http, string resource, string identity, int id)
+    {
+        using var response = await http.GetAsync($"/api/v3/{resource}?{identity}={id}");
+        EnsureRemoteSuccess(response, resource == "movie" ? "Radarr" : "Sonarr");
+        var items = await response.Content.ReadFromJsonAsync<JsonArray>();
+        return items?.OfType<JsonObject>().FirstOrDefault(item => item[identity]?.GetValue<int>() == id);
+    }
+
+    private async Task<int> ValidateProfileAsync(HttpClient http, string service)
+    {
+        var raw = _config[$"{service}:QualityProfileId"] ?? "4";
+        if (!int.TryParse(raw, out var id) || id <= 0) throw new RemoteRequestException($"{service} quality profile configuration is invalid.");
+        using var response = await http.GetAsync("/api/v3/qualityprofile");
+        EnsureRemoteSuccess(response, service);
+        var profiles = await response.Content.ReadFromJsonAsync<JsonArray>();
+        if (profiles?.OfType<JsonObject>().Any(p => p["id"]?.GetValue<int>() == id) != true)
+            throw new RemoteRequestException($"{service} configured quality profile does not exist. Ask the administrator to select a valid profile.");
+        return id;
+    }
+
+    private static void EnsureRemoteSuccess(HttpResponseMessage response, string service)
+    {
+        if (response.IsSuccessStatusCode) return;
+        var message = (int)response.StatusCode switch
+        {
+            401 or 403 => $"{service} authentication failed. Ask the administrator to check its API credentials.",
+            400 or 409 or 422 => $"{service} rejected the request. Check the quality profile, root folder and requested media settings.",
+            _ => $"{service} is unavailable or returned an unexpected response. Please retry later."
+        };
+        throw new RemoteRequestException(message);
+    }
+    private sealed class RemoteRequestException(string message) : Exception(message);
 
     public record MediaResult(string Message, string MediaType, string? ResolvedTitle, int? ExternalId, bool Existing = false);
 
@@ -337,3 +350,4 @@ public class MediaRequestService
         [property: JsonPropertyName("seasonNumber")] int SeasonNumber,
         bool Monitored);
 }
+

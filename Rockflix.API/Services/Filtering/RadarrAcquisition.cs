@@ -48,6 +48,7 @@ public class RadarrAcquisition(IHttpClientFactory clients, IConfiguration config
 
     public async Task<int> SearchAsync(MovieFilterJob job, CancellationToken ct)
     {
+        await VerifySearchOwnershipAsync(job, ct);
         using var refresh = await Http.PostAsJsonAsync("/api/v3/command", new { name = "RefreshMovie", movieIds = new[] { job.RadarrMovieId!.Value } }, ct);
         refresh.EnsureSuccessStatusCode();
         var command = await refresh.Content.ReadFromJsonAsync<JsonObject>(ct);
@@ -61,10 +62,21 @@ public class RadarrAcquisition(IHttpClientFactory clients, IConfiguration config
             if (status is "failed" or "aborted" || i == 59) throw new InvalidOperationException("Radarr rescan did not complete; acquisition stopped.");
             await Task.Delay(1000, ct);
         }
+        await VerifySearchOwnershipAsync(job, ct);
         using var search = await Http.PostAsJsonAsync("/api/v3/command", new { name = "MoviesSearch", movieIds = new[] { job.RadarrMovieId.Value } }, ct);
         search.EnsureSuccessStatusCode();
         var response = await search.Content.ReadFromJsonAsync<JsonObject>(ct);
         return response!["id"]!.GetValue<int>();
+    }
+
+    private async Task VerifySearchOwnershipAsync(MovieFilterJob job, CancellationToken ct)
+    {
+        if (job.RadarrMovieId == null) throw new InvalidOperationException("Acquisition is not enrolled in Radarr.");
+        var movie = await Http.GetFromJsonAsync<JsonObject>($"/api/v3/movie/{job.RadarrMovieId}", ct);
+        var expected = RemoteRoot.TrimEnd('/') + "/" + job.TmdbId + "/" + job.Id.ToString("N");
+        if (movie?["tmdbId"]?.GetValue<int>() != job.TmdbId ||
+            !string.Equals(movie?["path"]?.GetValue<string>(), expected, StringComparison.Ordinal))
+            throw new InvalidOperationException("Radarr movie identity or acquisition path changed. Ask the administrator to reconcile this job before retrying; no search was started.");
     }
 
     public async Task<string?> FindImportedAsync(MovieFilterJob job, CancellationToken ct)
